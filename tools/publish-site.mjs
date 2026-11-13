@@ -1,4 +1,4 @@
-// Replaces site/ with the latest Web Mobile build. Pushing site/ to main deploys it to GitHub Pages.
+// Replaces site/ with the latest Web Mobile build. Pushing site/ to master deploys it to GitHub Pages.
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
