@@ -2,7 +2,7 @@ import {
     Camera, Color, Layers, Material, Mesh, MeshRenderer, Node, Vec3, director, resources, view,
 } from 'cc';
 import type { ClimbSim } from '../climb/ClimbCore';
-import { isObstacle, zoneOf } from '../climb/ClimbCore';
+import { zoneOf } from '../climb/ClimbCore';
 import {
     CROWN, ROW_H, SPIRE_HALF, SPIRE_TIP, Section, angleDelta, halfAt, levelBaseY, profileHalf, ringDelta, roofY,
     rowY, summitY, surfacePoint, towerSections,
@@ -31,6 +31,9 @@ const HEAD = 2.0 * PLAYER_SCALE;
 export const ENDING_SEC = 10;
 /** Grid quads float just off the facade to avoid z-fighting. */
 const GRID_OUT = 0.04;
+/** Vent unit (obstacle) size: at most this wide, this tall (a little over two rows). */
+const VENT_W = 0.95;
+const VENT_H = 0.46;
 /** Half width of a pillar between two panes, in columns. */
 const PILLAR_HALF = 0.025;
 /** Half width of the wide pilasters at the corners and where safe glass meets danger glass. */
@@ -81,8 +84,10 @@ const COL = {
     safeHigh: hex('#5cb0b4'),
     danger: hex('#a8443e'),
     dangerHigh: hex('#ea8c82'),
-    obstacle: hex('#5a5a5a'),
-    obstacleTop: hex('#8a8a8a'),
+    // Vent units: brushed metal like the frames, with dark louvre slats.
+    obstacle: hex('#a9b4b3'),
+    obstacleTop: hex('#d3dcda'),
+    louvre: hex('#3e4a4c'),
     goal: hex('#e8c66a'),
 };
 
@@ -418,23 +423,21 @@ export class Tower3D {
         }
         const inset = PILLAR_HALF;
         // Floor-to-ceiling glass: one pane per column and floor, tinted by zone (light blue
-        // safe, red danger), also split where the zone changes (pagoda flare) or a vent sits.
+        // safe, red danger), also split where the zone changes (pagoda flare). Vents sit in
+        // front of the glass, so the pane stays whole behind them.
         // Rows are thin (ROW_H), so per-cell quads would read as noise.
         for (let c = 0; c < wall.ring; c++) {
             let start = 0;
             for (let r = 1; r <= wall.rows; r++) {
                 const prevZone = zoneOf(wall, c, r - 1);
-                const brk = r === wall.rows || r % this.rowsPerFloor === 0 || isObstacle(wall, c, r) || isObstacle(wall, c, r - 1)
-                    || zoneOf(wall, c, r) !== prevZone;
+                const brk = r === wall.rows || r % this.rowsPerFloor === 0 || zoneOf(wall, c, r) !== prevZone;
                 if (!brk) continue;
-                if (!isObstacle(wall, c, r - 1)) {
-                    const safe = prevZone === 'safe';
-                    // Gradient over the whole floor, so a pane split mid-floor still reads as one.
-                    const f0 = Math.floor(start / this.rowsPerFloor) * this.rowsPerFloor;
-                    const lo = Color.lerp(new Color(), safe ? COL.safe : COL.danger, safe ? COL.safeHigh : COL.dangerHigh, (start - f0) / this.rowsPerFloor);
-                    const hi = Color.lerp(new Color(), safe ? COL.safe : COL.danger, safe ? COL.safeHigh : COL.dangerHigh, (r - f0) / this.rowsPerFloor);
-                    faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset, ry(start), ry(r), GRID_OUT, lo, true, hi);
-                }
+                const safe = prevZone === 'safe';
+                // Gradient over the whole floor, so a pane split mid-floor still reads as one.
+                const f0 = Math.floor(start / this.rowsPerFloor) * this.rowsPerFloor;
+                const lo = Color.lerp(new Color(), safe ? COL.safe : COL.danger, safe ? COL.safeHigh : COL.dangerHigh, (start - f0) / this.rowsPerFloor);
+                const hi = Color.lerp(new Color(), safe ? COL.safe : COL.danger, safe ? COL.safeHigh : COL.dangerHigh, (r - f0) / this.rowsPerFloor);
+                faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset, ry(start), ry(r), GRID_OUT, lo, true, hi);
                 start = r;
             }
         }
@@ -454,14 +457,25 @@ export class Tower3D {
             facePillar(mb, S, wall.cols, wall.faces, c, wide ? PILASTER_HALF : PILLAR_HALF, ry(0), ry(wall.rows),
                 GRID_OUT, GRID_OUT + (wide ? 0.18 : 0.06), COL.pillar);
         }
-        // Obstacles: vents sticking out of the glass.
+        // Obstacles: compact vent units bolted onto the glass in the middle of the blocked cell.
+        // Sized off the row, not the column, so wide cells on narrow levels don't stretch them
+        // into long dark bars (about 2:1 instead of 7:1).
         for (const key of wall.obstacles) {
             const c = key % wall.ring;
             const r = Math.floor(key / wall.ring);
             const y = ry(r) + ROW_H / 2;
-            const p = surfacePoint(c + 0.5, halfAt(S, y), wall.cols, wall.faces, 0.2);
-            const width = (2 * halfAt(S, y)) / wall.cols;
-            mb.box(p.x, y, p.z, width * 0.92, ROW_H * 1.6, 0.45, COL.obstacle, p.yaw, COL.obstacleTop);
+            const colW = (2 * halfAt(S, y)) / wall.cols;
+            const w = Math.min(colW * 0.55, VENT_W);
+            const h = VENT_H;
+            const d = 0.26;
+            const p = surfacePoint(c + 0.5, halfAt(S, y), wall.cols, wall.faces, GRID_OUT + d / 2);
+            mb.box(p.x, y, p.z, w, h, d, COL.obstacle, p.yaw, COL.obstacleTop);
+            // Three louvre slats on the front face.
+            const f = surfacePoint(c + 0.5, halfAt(S, y), wall.cols, wall.faces, GRID_OUT + d + 0.005);
+            for (let i = 0; i < 3; i++) {
+                const sy = y - h / 2 + (h * (i + 1)) / 4;
+                mb.box(f.x, sy, f.z, w * 0.82, h * 0.1, 0.01, COL.louvre, f.yaw);
+            }
         }
         const { node, mesh } = this.addMesh('Grid', mb);
         this.gridNode = node;
