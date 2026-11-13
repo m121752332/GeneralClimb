@@ -14,11 +14,11 @@ import { MeshBuilder, type V3 } from './MeshKit';
 
 export type MakeMesh = (name: string, mb: MeshBuilder, parent: Node) => { node: Node; destroy(): void };
 
-/** Distances out from the glass: window, body, details, arms (grid strips sit at 0.04). */
-const OUT_WINDOW = 0.06;
-const OUT_BODY = 0.075;
-const OUT_DETAIL = 0.085;
-const OUT_ARM = 0.095;
+/** Distances out from the tower surface: window, body, details, arms (level glass sits at 0.12). */
+const OUT_WINDOW = 0.14;
+const OUT_BODY = 0.155;
+const OUT_DETAIL = 0.165;
+const OUT_ARM = 0.175;
 
 /**
  * People are drawn bigger than life (so faces read on a phone) and stand close to the glass:

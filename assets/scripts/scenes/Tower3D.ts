@@ -30,10 +30,16 @@ const HEAD = 2.0 * PLAYER_SCALE;
 /** Ending: the climber sits on the summit ring for this long (ADR-07 / ADR-10). */
 export const ENDING_SEC = 10;
 /** Grid quads float just off the facade to avoid z-fighting. */
-const GRID_OUT = 0.04;
-/** Vent unit (obstacle) size: at most this wide, this tall (a little over two rows). */
-const VENT_W = 0.95;
-const VENT_H = 0.46;
+/**
+ * How far the current level's glass sits out from the tower surface. Must clear the static
+ * facade's bay pillars (0.1 out), or their 8-per-face rhythm shows through the level's own
+ * columns as an extra frame down the middle of each pane.
+ */
+const GRID_OUT = 0.12;
+/** Vent unit (obstacle): share of the column it covers, at most this wide, this much taller than its rows. */
+const VENT_FILL = 0.62;
+const VENT_W = 1.25;
+const VENT_PAD = 0.3;
 /** Half width of a pillar between two panes, in columns. */
 const PILLAR_HALF = 0.025;
 /** Half width of the wide pilasters at the corners and where safe glass meets danger glass. */
@@ -457,24 +463,30 @@ export class Tower3D {
             facePillar(mb, S, wall.cols, wall.faces, c, wide ? PILASTER_HALF : PILLAR_HALF, ry(0), ry(wall.rows),
                 GRID_OUT, GRID_OUT + (wide ? 0.18 : 0.06), COL.pillar);
         }
-        // Obstacles: compact vent units bolted onto the glass in the middle of the blocked cell.
-        // Sized off the row, not the column, so wide cells on narrow levels don't stretch them
-        // into long dark bars (about 2:1 instead of 7:1).
-        for (const key of wall.obstacles) {
-            const c = key % wall.ring;
-            const r = Math.floor(key / wall.ring);
-            const y = ry(r) + ROW_H / 2;
-            const colW = (2 * halfAt(S, y)) / wall.cols;
-            const w = Math.min(colW * 0.55, VENT_W);
-            const h = VENT_H;
-            const d = 0.26;
-            const p = surfacePoint(c + 0.5, halfAt(S, y), wall.cols, wall.faces, GRID_OUT + d / 2);
-            mb.box(p.x, y, p.z, w, h, d, COL.obstacle, p.yaw, COL.obstacleTop);
-            // Three louvre slats on the front face.
-            const f = surfacePoint(c + 0.5, halfAt(S, y), wall.cols, wall.faces, GRID_OUT + d + 0.005);
-            for (let i = 0; i < 3; i++) {
-                const sy = y - h / 2 + (h * (i + 1)) / 4;
-                mb.box(f.x, sy, f.z, w * 0.82, h * 0.1, 0.01, COL.louvre, f.yaw);
+        // Obstacles: vent units bolted onto the glass in the middle of the blocked cell. Width is
+        // capped so wide cells on narrow levels don't stretch them into long bars, and a run of
+        // blocked rows in one column becomes one taller unit instead of a stack of boxes.
+        for (let c = 0; c < wall.ring; c++) {
+            for (let r = 0; r < wall.rows; r++) {
+                if (!wall.obstacles.has(r * wall.ring + c)) continue;
+                let n = 1;
+                while (r + n < wall.rows && wall.obstacles.has((r + n) * wall.ring + c)) n++;
+                const y = ry(r) + (n * ROW_H) / 2;
+                const half = halfAt(S, y);
+                const colW = (2 * half) / wall.cols;
+                const w = Math.min(colW * VENT_FILL, VENT_W);
+                const h = n * ROW_H + VENT_PAD;
+                const d = 0.26;
+                const p = surfacePoint(c + 0.5, half, wall.cols, wall.faces, GRID_OUT + d / 2);
+                mb.box(p.x, y, p.z, w, h, d, COL.obstacle, p.yaw, COL.obstacleTop);
+                // Louvre slats on the front face, about one every 0.15.
+                const slats = Math.max(3, Math.round(h / 0.15) - 1);
+                const f = surfacePoint(c + 0.5, half, wall.cols, wall.faces, GRID_OUT + d + 0.005);
+                for (let i = 0; i < slats; i++) {
+                    const sy = y - h / 2 + (h * (i + 1)) / (slats + 1);
+                    mb.box(f.x, sy, f.z, w * 0.82, 0.045, 0.01, COL.louvre, f.yaw);
+                }
+                r += n - 1;
             }
         }
         const { node, mesh } = this.addMesh('Grid', mb);
