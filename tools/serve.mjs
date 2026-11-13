@@ -9,7 +9,7 @@ const root = resolve(fileURLToPath(new URL('../', import.meta.url)), process.arg
 const port = Number(process.env.PORT ?? process.argv[3] ?? 8101);
 const types = {
     '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json',
-    '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.wasm': 'application/wasm',
+    '.css': 'text/css', '.png': 'image/png', '.ico': 'image/x-icon', '.jpg': 'image/jpeg', '.wasm': 'application/wasm',
     '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.ttf': 'font/ttf', '.bin': 'application/octet-stream',
 };
 
