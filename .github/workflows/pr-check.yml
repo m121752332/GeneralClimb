@@ -1,0 +1,35 @@
+# PR 檢查：合併到 master 前先跑單元測試，並用無頭 Chromium 開啟已提交的 site/，確認 Boot 場景能載入 levels.json。
+# Cocos 編輯器無法在雲端 runner 建置，所以這裡驗證的是本機建置後提交的 site/（與 deploy-pages.yml 發布的內容相同）。
+name: PR check
+
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PLAYWRIGHT_VERSION: 1.63.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit tests
+        run: npm test
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@${PLAYWRIGHT_VERSION}
+          npx playwright install --with-deps chromium
+      - name: Smoke test site/
+        run: npm run smoke

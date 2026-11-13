@@ -34,7 +34,7 @@ GeneralClimb/
 ├─ tests/           node --test 單元測試（只測不依賴 cc 的純 TS）
 ├─ tools/           建置與發布腳本、Web Mobile 建置設定
 ├─ site/            Web Mobile 建置輸出，push 後由 Actions 發布到 Pages
-└─ .github/workflows/deploy-pages.yml
+└─ .github/workflows/ deploy-pages.yml（master 發布）、pr-check.yml（PR 檢查）
 ```
 
 ## 開發規則
@@ -56,7 +56,8 @@ Components：InputController、RiskSystem、EventScheduler、WeatherSystem、Eag
 - 設計解析度 720 × 1280；`assets/scripts/core/ScreenFit.ts` 依螢幕比例切換 FIXED_WIDTH / FIXED_HEIGHT。
 - 功能裁剪只留 2D 需要的模組（`settings/v2/packages/engine.json`）；要用物理、Spine、TiledMap、RichText 等再打開。
 - 像素素材匯入後 Filter Mode 一律設 Nearest。
-- `npm test`：單元測試。`npm run build:web`：CLI 建置到 `build/web-mobile`（先關編輯器）。`npm run publish:site`：覆蓋 `site/`。
+- `npm test`：單元測試。`npm run build:web`：CLI 建置到 `build/web-mobile`（先關編輯器）。`npm run publish:site`：覆蓋 `site/`。`npm run smoke`：用無頭 Chromium 開 `site/`，確認 Boot 場景載入 levels.json（需先 `npm i --no-save playwright` 並 `npx playwright install chromium`）。
+- PR 到 master 會跑 `.github/workflows/pr-check.yml`（`npm test` + `npm run smoke`）。
 
 ## 下一步（M0 專案骨架）
 1. ~~建立 Cocos 專案、LevelLoader、建置與發布腳本~~（完成）
