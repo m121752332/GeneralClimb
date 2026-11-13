@@ -65,6 +65,18 @@ export interface DevConfig {
     climbSpeeds: number[];
 }
 
+/** Window crowd (GDD §9 窗內 NPC); cosmetic, but tunable like everything else. */
+export interface CrowdConfig {
+    /** Chance of a second NPC on a floor (there is always one where a window is free). */
+    secondChance: number;
+    /** Columns kept between two NPCs on the same floor. */
+    minGap: number;
+    /** NPCs react when the climber is this many floors away or closer. */
+    reactFloors: number;
+    /** …and wave / take photos when the climber is this many columns away or closer. */
+    waveCols: number;
+}
+
 export interface LevelDef {
     id: number;
     name: string;
@@ -101,6 +113,7 @@ export interface LevelConfig {
     pagodaFlare: PagodaFlareConfig;
     tower: TowerConfig;
     dev: DevConfig;
+    crowd: CrowdConfig;
     levels: LevelDef[];
     practice: PracticeConfig;
 }
@@ -342,6 +355,14 @@ function checkDev(c: Checker, root: Obj): void {
     }
 }
 
+function checkCrowd(c: Checker, root: Obj): void {
+    const w = c.obj(root, 'crowd', '$');
+    c.num(w, 'secondChance', '$.crowd', { min: 0, max: 1 });
+    c.num(w, 'minGap', '$.crowd', { min: 1, int: true });
+    c.num(w, 'reactFloors', '$.crowd', { gt: 0 });
+    c.num(w, 'waveCols', '$.crowd', { min: 0, int: true });
+}
+
 function checkPractice(c: Checker, root: Obj, widths: Obj): void {
     const p = c.obj(root, 'practice', '$');
     c.num(p, 'floors', '$.practice', { min: 1, int: true });
@@ -381,6 +402,7 @@ export function parseLevelConfig(input: unknown): LevelConfig {
     checkPagodaFlare(c, root);
     checkTower(c, root);
     checkDev(c, root);
+    checkCrowd(c, root);
     checkPractice(c, root, widths);
 
     if (c.issues.length > 0) throw new LevelConfigError(c.issues);

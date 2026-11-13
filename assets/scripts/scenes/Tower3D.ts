@@ -1,13 +1,16 @@
 import {
-    Camera, Color, Layers, Material, Mesh, MeshRenderer, Node, Vec3, director, primitives, resources, utils, view,
+    Camera, Color, Layers, Material, Mesh, MeshRenderer, Node, Vec3, director, resources, view,
 } from 'cc';
 import type { ClimbSim } from '../climb/ClimbCore';
-import { isObstacle, zoneOf } from '../climb/ClimbCore';
+import { zoneOf } from '../climb/ClimbCore';
 import {
     CROWN, ROW_H, SPIRE_HALF, SPIRE_TIP, Section, angleDelta, halfAt, levelBaseY, profileHalf, ringDelta, roofY,
     rowY, summitY, surfacePoint, towerSections,
 } from '../climb/TowerShape';
 import { climberParts } from '../climb/ClimberShape';
+import { MeshBuilder, type V3 } from './MeshKit';
+import { WindowCrowd } from './WindowCrowd';
+import type { CrowdTuning } from '../climb/CrowdPlan';
 
 /**
  * 3D view of the climb (ADR-10): a low-poly Taipei 101 built in code, the current level's
@@ -27,7 +30,22 @@ const HEAD = 2.0 * PLAYER_SCALE;
 /** Ending: the climber sits on the summit ring for this long (ADR-07 / ADR-10). */
 export const ENDING_SEC = 10;
 /** Grid quads float just off the facade to avoid z-fighting. */
-const GRID_OUT = 0.04;
+/**
+ * How far the current level's glass sits out from the tower surface. Must clear the static
+ * facade's bay pillars (0.1 out), or their 8-per-face rhythm shows through the level's own
+ * columns as an extra frame down the middle of each pane.
+ */
+const GRID_OUT = 0.12;
+/** Vent unit (obstacle): share of the column it covers, at most this wide, this much taller than its rows. */
+const VENT_FILL = 0.62;
+const VENT_W = 1.25;
+const VENT_PAD = 0.3;
+/** Half width of a pillar between two panes, in columns. */
+const PILLAR_HALF = 0.025;
+/** Half width of the wide pilasters at the corners and where safe glass meets danger glass. */
+const PILASTER_HALF = 0.09;
+/** Glass bays per face on the floors outside the current level. */
+const FACADE_BAYS = 8;
 /** Horizontal field of view, so a face fills the width on any phone. */
 const FOV = 42;
 /** Camera distance from the face: `half * DIST_K + DIST_C`. */
@@ -52,7 +70,12 @@ const CITY_MIN = 60;
 
 const COL = {
     glass: hex('#3f8f98'),
-    glassDark: hex('#2b6f78'),
+    // Floor-to-ceiling glass: darker at the floor, sky reflection towards the ceiling.
+    paneLow: hex('#1d5c62'),
+    paneHigh: hex('#4d9ea2'),
+    // Light grey metal frame: thick vertical pillars, thinner horizontal transoms.
+    pillar: hex('#d3dcda'),
+    frame: hex('#c3cdcb'),
     mullion: hex('#1f4f57'),
     ledge: hex('#cfd8d6'),
     disc: hex('#b9c6c4'),
@@ -62,11 +85,15 @@ const COL = {
     spire: hex('#d8dcdc'),
     plaza: hex('#b8b2a6'),
     mat: hex('#24474a'),
-    safe: hex('#6fd0e0'),
-    danger: hex('#e0605a'),
-    obstacle: hex('#5a5a5a'),
-    obstacleTop: hex('#8a8a8a'),
-    slab: hex('#173a40'),
+    // Same dark teal as the rest of the tower, a touch brighter, so the level blends in.
+    safe: hex('#20666b'),
+    safeHigh: hex('#5cb0b4'),
+    danger: hex('#a8443e'),
+    dangerHigh: hex('#ea8c82'),
+    // Vent units: brushed metal like the frames, with dark louvre slats.
+    obstacle: hex('#a9b4b3'),
+    obstacleTop: hex('#d3dcda'),
+    louvre: hex('#3e4a4c'),
     goal: hex('#e8c66a'),
 };
 
@@ -74,135 +101,35 @@ function hex(s: string): Color {
     return new Color().fromHEX(s);
 }
 
-/** Fixed light: faces turned towards it are brighter (baked into vertex colours). */
-const LIGHT = new Vec3(0.45, 0.75, 0.5).normalize();
-
-function shade(c: Color, nx: number, ny: number, nz: number): [number, number, number, number] {
-    const len = Math.hypot(nx, ny, nz) || 1;
-    const d = (nx * LIGHT.x + ny * LIGHT.y + nz * LIGHT.z) / len;
-    const k = 0.62 + 0.38 * Math.max(0, d);
-    return [c.r / 255 * k, c.g / 255 * k, c.b / 255 * k, 1];
-}
-
-type V3 = [number, number, number];
-
-/** Collects vertex-coloured triangles into one mesh. */
-class MeshBuilder {
-    positions: number[] = [];
-    colors: number[] = [];
-    indices: number[] = [];
-    private min: V3 = [Infinity, Infinity, Infinity];
-    private max: V3 = [-Infinity, -Infinity, -Infinity];
-
-    get vertexCount(): number {
-        return this.positions.length / 3;
-    }
-
-    private vert(p: V3, c: number[]): number {
-        this.positions.push(p[0], p[1], p[2]);
-        this.colors.push(c[0], c[1], c[2], c[3]);
-        for (let i = 0; i < 3; i++) {
-            if (p[i] < this.min[i]) this.min[i] = p[i];
-            if (p[i] > this.max[i]) this.max[i] = p[i];
-        }
-        return this.vertexCount - 1;
-    }
-
-    /** Quad a-b-c-d counter-clockwise seen from the front. Shaded by its own normal. */
-    quad(a: V3, b: V3, c: V3, d: V3, color: Color, flat = false): void {
-        const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
-        const vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2];
-        const col = flat ? [color.r / 255, color.g / 255, color.b / 255, 1]
-            : shade(color, uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
-        const i = this.vert(a, col);
-        this.vert(b, col);
-        this.vert(c, col);
-        this.vert(d, col);
-        this.indices.push(i, i + 1, i + 2, i, i + 2, i + 3);
-    }
-
-    /** Axis-aligned box (optionally turned about Y by `yaw` around its centre). */
-    box(cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, color: Color, yaw = 0, top?: Color): void {
-        const hx = sx / 2, hy = sy / 2, hz = sz / 2;
-        const cs = Math.cos(yaw), sn = Math.sin(yaw);
-        const p = (x: number, y: number, z: number): V3 => [cx + x * cs + z * sn, cy + y, cz - x * sn + z * cs];
-        const v = [p(-hx, -hy, -hz), p(hx, -hy, -hz), p(hx, hy, -hz), p(-hx, hy, -hz),
-            p(-hx, -hy, hz), p(hx, -hy, hz), p(hx, hy, hz), p(-hx, hy, hz)];
-        this.quad(v[4], v[5], v[6], v[7], color); // +z
-        this.quad(v[1], v[0], v[3], v[2], color); // -z
-        this.quad(v[5], v[1], v[2], v[6], color); // +x
-        this.quad(v[0], v[4], v[7], v[3], color); // -x
-        this.quad(v[7], v[6], v[2], v[3], top ?? color); // +y
-        this.quad(v[0], v[1], v[5], v[4], color); // -y
-    }
-
-    /** Vertical prism with `n` sides, radius r0 at y0 tapering to r1 at y1, capped. */
-    prism(n: number, y0: number, y1: number, r0: number, r1: number, color: Color, x = 0, z = 0): void {
-        for (let i = 0; i < n; i++) {
-            const a0 = (i / n) * Math.PI * 2;
-            const a1 = ((i + 1) / n) * Math.PI * 2;
-            this.quad(
-                [x + Math.sin(a0) * r0, y0, z + Math.cos(a0) * r0],
-                [x + Math.sin(a1) * r0, y0, z + Math.cos(a1) * r0],
-                [x + Math.sin(a1) * r1, y1, z + Math.cos(a1) * r1],
-                [x + Math.sin(a0) * r1, y1, z + Math.cos(a0) * r1],
-                color,
-            );
-        }
-        const top = shade(color, 0, 1, 0);
-        const c = this.vert([x, y1, z], top);
-        for (let i = 0; i <= n; i++) {
-            const a = (i / n) * Math.PI * 2;
-            this.vert([x + Math.sin(a) * r1, y1, z + Math.cos(a) * r1], top);
-        }
-        for (let i = 0; i < n; i++) this.indices.push(c, c + 1 + i, c + 2 + i);
-    }
-
-    /** Wraps ready-made buffers (e.g. a ClimberShape part, already lit). */
-    static from(positions: number[], colors: number[], indices: number[]): MeshBuilder {
-        const mb = new MeshBuilder();
-        mb.positions = positions;
-        mb.colors = colors;
-        mb.indices = indices;
-        for (let i = 0; i < positions.length; i += 3) {
-            for (let k = 0; k < 3; k++) {
-                const v = positions[i + k];
-                if (v < mb.min[k]) mb.min[k] = v;
-                if (v > mb.max[k]) mb.max[k] = v;
-            }
-        }
-        return mb;
-    }
-
-    build(): Mesh {
-        const geometry = {
-            positions: this.positions,
-            colors: this.colors,
-            indices: this.indices,
-            minPos: new Vec3(this.min[0], this.min[1], this.min[2]),
-            maxPos: new Vec3(this.max[0], this.max[1], this.max[2]),
-        } as unknown as primitives.IGeometry;
-        // `utils.MeshUtils.createMesh` in 3.8; older builds expose `utils.createMesh`.
-        const u = utils as unknown as {
-            MeshUtils?: { createMesh: (g: primitives.IGeometry) => Mesh };
-            createMesh?: (g: primitives.IGeometry) => Mesh;
-        };
-        const create = u.MeshUtils?.createMesh ?? u.createMesh;
-        if (!create) throw new Error('createMesh is not available (is the 3D module enabled?)');
-        return create(geometry);
-    }
-}
-
 /** Corners of a face strip at heights y0..y1 between perimeter coordinates s0..s1. */
 function faceQuad(mb: MeshBuilder, sections: readonly Section[], cols: number, faces: number,
-    s0: number, s1: number, y0: number, y1: number, out: number, color: Color, flat = false): void {
+    s0: number, s1: number, y0: number, y1: number, out: number, color: Color, flat = false, top?: Color): void {
     const h0 = halfAt(sections, y0 + 1e-4);
     const h1 = halfAt(sections, y1 - 1e-4);
     const a = surfacePoint(s0, h0, cols, faces, out);
     const b = surfacePoint(s1, h0, cols, faces, out);
     const c = surfacePoint(s1, h1, cols, faces, out);
     const d = surfacePoint(s0, h1, cols, faces, out);
-    mb.quad([a.x, y0, a.z], [b.x, y0, b.z], [c.x, y1, c.z], [d.x, y1, d.z], color, flat);
+    if (top) mb.gradQuad([a.x, y0, a.z], [b.x, y0, b.z], [c.x, y1, c.z], [d.x, y1, d.z], color, top, flat);
+    else mb.quad([a.x, y0, a.z], [b.x, y0, b.z], [c.x, y1, c.z], [d.x, y1, d.z], color, flat);
+}
+
+/**
+ * A pillar standing out of the glass: front face plus both sides (shaded by their own normals,
+ * so it reads as a 3D frame). At a corner the front cuts across, which makes a chamfered corner post.
+ */
+function facePillar(mb: MeshBuilder, sections: readonly Section[], cols: number, faces: number,
+    s: number, hw: number, y0: number, y1: number, back: number, front: number, color: Color): void {
+    faceQuad(mb, sections, cols, faces, s - hw, s + hw, y0, y1, front, color);
+    const h0 = halfAt(sections, y0 + 1e-4);
+    const h1 = halfAt(sections, y1 - 1e-4);
+    for (const [sa, flip] of [[s - hw, false], [s + hw, true]] as const) {
+        const bb = surfacePoint(sa, h0, cols, faces, back), bf = surfacePoint(sa, h0, cols, faces, front);
+        const tb = surfacePoint(sa, h1, cols, faces, back), tf = surfacePoint(sa, h1, cols, faces, front);
+        const a: V3 = [bb.x, y0, bb.z], b: V3 = [bf.x, y0, bf.z], c: V3 = [tf.x, y1, tf.z], d: V3 = [tb.x, y1, tb.z];
+        if (flip) mb.quad(b, a, d, c, color);
+        else mb.quad(a, b, c, d, color);
+    }
 }
 
 /** Loads the shared vertex-colour unlit material (resources/materials/vertex-color.mtl). */
@@ -272,6 +199,7 @@ export class Tower3D {
     private material: Material | null = null;
     private gridNode: Node | null = null;
     private gridMesh: Mesh | null = null;
+    private crowd: WindowCrowd | null = null;
     private player!: Node;
     private body!: Node;
     private cape: Node | null = null;
@@ -297,7 +225,10 @@ export class Tower3D {
     private readonly tmp = new Vec3();
     private readonly tmp2 = new Vec3();
 
-    constructor(rowsPerFloor: number, ladderRows: number) {
+    private readonly crowdTuning: CrowdTuning;
+
+    constructor(rowsPerFloor: number, ladderRows: number, crowdTuning: CrowdTuning) {
+        this.crowdTuning = crowdTuning;
         this.rowsPerFloor = rowsPerFloor;
         this.ladderRows = ladderRows;
         this.sections = towerSections(rowsPerFloor);
@@ -326,10 +257,15 @@ export class Tower3D {
     async init(): Promise<void> {
         this.material = await loadMaterial();
         this.addMesh('Scenery', this.buildScenery());
+        this.crowd = new WindowCrowd(this.root, this.sections, this.rowsPerFloor, this.crowdTuning, (name, mb, parent) => {
+            const { node, mesh } = this.addMesh(name, mb, parent);
+            return { node, destroy: () => mesh.destroy() };
+        });
         this.buildPlayer();
     }
 
     destroy(): void {
+        this.crowd?.clear();
         this.gridMesh?.destroy();
         this.root.destroy();
         this.camera.node.destroy();
@@ -362,18 +298,21 @@ export class Tower3D {
 
         for (let i = 0; i < S.length; i++) {
             const sec = S[i];
-            // Facade: four trapezoids (one cell = one face here, cols = 1).
-            for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, sec.y0, sec.y1, 0, i % 2 ? COL.glass : COL.glassDark);
-            // Floor lines on the glass.
-            for (let fl = sec.floorFrom + 1; fl <= sec.floorTo; fl++) {
-                const y = rowY((fl - 1) * rpf);
-                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y - 0.06, y + 0.06, 0.015, COL.mullion);
+            // Facade: floor-to-ceiling glass, one pane per floor and face (one cell = one face
+            // here, cols = 1), with a spandrel band at every floor line.
+            for (let fl = sec.floorFrom; fl <= sec.floorTo; fl++) {
+                const y0 = fl === sec.floorFrom ? sec.y0 : rowY((fl - 1) * rpf);
+                const y1 = fl === sec.floorTo ? sec.y1 : rowY(fl * rpf);
+                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y0, y1, 0, COL.paneLow, false, COL.paneHigh);
+                if (fl === sec.floorFrom) continue;
+                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y0 - 0.08, y0 + 0.08, 0.04, COL.frame);
             }
-            // Vertical mullions: a few per face.
+            // Pillars between the glass bays (about 1/8 of a bay wide), wider at the corners.
             for (let f = 0; f < faces; f++) {
-                for (let k = 1; k < 6; k++) {
-                    const s = f + k / 6;
-                    faceQuad(mb, S, 1, faces, s - 0.004, s + 0.004, sec.y0, sec.y1, 0.015, COL.mullion);
+                for (let k = 0; k < FACADE_BAYS; k++) {
+                    const s = f + k / FACADE_BAYS;
+                    const hw = (k === 0 ? 2 : 1) * 0.5 / FACADE_BAYS / 8;
+                    facePillar(mb, S, 1, faces, s, hw, sec.y0, sec.y1, 0, 0.1, COL.pillar);
                 }
             }
             // Ledge on top: from this section's top edge in to the next one's bottom edge.
@@ -479,6 +418,7 @@ export class Tower3D {
             this.standY = this.baseY;
             this.standOut = Math.max(0.5, (this.half(this.baseY - 0.05) - this.half(this.baseY + 0.05)) * 0.55);
         }
+        this.crowd?.build(sim, this.baseY);
         const mb = new MeshBuilder();
         if (wall.cols === 1) {
             this.buildLadder(mb, wall.rows);
@@ -487,42 +427,67 @@ export class Tower3D {
             this.gridMesh = mesh;
             return;
         }
-        const inset = 0.08;
-        // One glass strip per column, split where the zone changes (pagoda flare) or an
-        // obstacle sits; rows are thin (ROW_H), so per-cell quads would read as noise.
+        const inset = PILLAR_HALF;
+        // Floor-to-ceiling glass: one pane per column and floor, tinted by zone (light blue
+        // safe, red danger), also split where the zone changes (pagoda flare). Vents sit in
+        // front of the glass, so the pane stays whole behind them.
+        // Rows are thin (ROW_H), so per-cell quads would read as noise.
         for (let c = 0; c < wall.ring; c++) {
             let start = 0;
             for (let r = 1; r <= wall.rows; r++) {
                 const prevZone = zoneOf(wall, c, r - 1);
-                const brk = r === wall.rows || isObstacle(wall, c, r) || isObstacle(wall, c, r - 1)
-                    || zoneOf(wall, c, r) !== prevZone;
+                const brk = r === wall.rows || r % this.rowsPerFloor === 0 || zoneOf(wall, c, r) !== prevZone;
                 if (!brk) continue;
-                if (!isObstacle(wall, c, r - 1)) {
-                    const color = prevZone === 'safe' ? COL.safe : COL.danger;
-                    faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset, ry(start), ry(r), GRID_OUT, color, true);
-                }
+                const safe = prevZone === 'safe';
+                // Gradient over the whole floor, so a pane split mid-floor still reads as one.
+                const f0 = Math.floor(start / this.rowsPerFloor) * this.rowsPerFloor;
+                const lo = Color.lerp(new Color(), safe ? COL.safe : COL.danger, safe ? COL.safeHigh : COL.dangerHigh, (start - f0) / this.rowsPerFloor);
+                const hi = Color.lerp(new Color(), safe ? COL.safe : COL.danger, safe ? COL.safeHigh : COL.dangerHigh, (r - f0) / this.rowsPerFloor);
+                faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset, ry(start), ry(r), GRID_OUT, lo, true, hi);
                 start = r;
             }
         }
-        // Half-floor lines so the climb still shows progress between slabs.
-        for (let r = this.rowsPerFloor / 2; r < wall.rows; r += this.rowsPerFloor) {
-            const y = ry(r);
-            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - 0.025, y + 0.025, GRID_OUT + 0.01, COL.mullion, true);
-        }
-        // Floor slabs inside this level, and the goal band at the top.
+        // Horizontal transoms at every floor line (half a pillar thick), the goal band at the top.
         for (let r = this.rowsPerFloor; r <= wall.rows; r += this.rowsPerFloor) {
             const y = ry(r);
             const top = r === wall.rows;
-            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - (top ? 0.1 : 0.05), y + (top ? 0.1 : 0.05), GRID_OUT + 0.01, top ? COL.goal : COL.slab, true);
+            const t = top ? 0.12 : 0.1;
+            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - t, y + t, GRID_OUT + 0.09, top ? COL.goal : COL.pillar);
         }
-        // Obstacles: vents sticking out of the glass.
-        for (const key of wall.obstacles) {
-            const c = key % wall.ring;
-            const r = Math.floor(key / wall.ring);
-            const y = ry(r) + ROW_H / 2;
-            const p = surfacePoint(c + 0.5, halfAt(S, y), wall.cols, wall.faces, 0.2);
-            const width = (2 * halfAt(S, y)) / wall.cols;
-            mb.box(p.x, y, p.z, width * 0.92, ROW_H * 1.6, 0.45, COL.obstacle, p.yaw, COL.obstacleTop);
+        // Thin frames between the panes; wide pilasters at the corners and where safe glass
+        // meets danger glass (the climber's natural route edge), standing out of the glass.
+        for (let c = 0; c < wall.ring; c++) {
+            const corner = wall.faces > 1 && c % wall.cols === 0;
+            const edge = zoneOf(wall, c - 1, 0) !== zoneOf(wall, c, 0);
+            const wide = corner || edge;
+            facePillar(mb, S, wall.cols, wall.faces, c, wide ? PILASTER_HALF : PILLAR_HALF, ry(0), ry(wall.rows),
+                GRID_OUT, GRID_OUT + (wide ? 0.18 : 0.06), COL.pillar);
+        }
+        // Obstacles: vent units bolted onto the glass in the middle of the blocked cell. Width is
+        // capped so wide cells on narrow levels don't stretch them into long bars, and a run of
+        // blocked rows in one column becomes one taller unit instead of a stack of boxes.
+        for (let c = 0; c < wall.ring; c++) {
+            for (let r = 0; r < wall.rows; r++) {
+                if (!wall.obstacles.has(r * wall.ring + c)) continue;
+                let n = 1;
+                while (r + n < wall.rows && wall.obstacles.has((r + n) * wall.ring + c)) n++;
+                const y = ry(r) + (n * ROW_H) / 2;
+                const half = halfAt(S, y);
+                const colW = (2 * half) / wall.cols;
+                const w = Math.min(colW * VENT_FILL, VENT_W);
+                const h = n * ROW_H + VENT_PAD;
+                const d = 0.26;
+                const p = surfacePoint(c + 0.5, half, wall.cols, wall.faces, GRID_OUT + d / 2);
+                mb.box(p.x, y, p.z, w, h, d, COL.obstacle, p.yaw, COL.obstacleTop);
+                // Louvre slats on the front face, about one every 0.15.
+                const slats = Math.max(3, Math.round(h / 0.15) - 1);
+                const f = surfacePoint(c + 0.5, half, wall.cols, wall.faces, GRID_OUT + d + 0.005);
+                for (let i = 0; i < slats; i++) {
+                    const sy = y - h / 2 + (h * (i + 1)) / (slats + 1);
+                    mb.box(f.x, sy, f.z, w * 0.82, 0.045, 0.01, COL.louvre, f.yaw);
+                }
+                r += n - 1;
+            }
         }
         const { node, mesh } = this.addMesh('Grid', mb);
         this.gridNode = node;
@@ -658,6 +623,7 @@ export class Tower3D {
         const pos = this.climberPos(sim, opts.fallY);
         const { s, y } = pos;
         this.feetY = y;
+        this.crowd?.update(dt, sim, opts.fallY !== null || sim.tier !== 'safe');
         // Distance from the axis measured at the hips, so a flared face doesn't swallow them.
         const half = this.half(y + 1.2);
         const out = pos.out + opts.tumble * 1.2;
