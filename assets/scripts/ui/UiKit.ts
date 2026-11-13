@@ -175,10 +175,8 @@ export function openModal(root: Node, title: string, w: number, h: number, onClo
     const close = (): void => {
         if (closed) return;
         closed = true;
-        tween(opacity).to(0.12, { opacity: 0 }).call(() => {
-            overlay.destroy();
-            onClose?.();
-        }).start();
+        onClose?.();
+        tween(opacity).to(0.12, { opacity: 0 }).call(() => overlay.destroy()).start();
     };
     overlay.on(Node.EventType.TOUCH_END, close);
     makeButton(panel, '✕', 64, 64, { ...STYLE.secondary, fontSize: 30, radius: 32 }, close, w / 2 - 50, h / 2 - 48);

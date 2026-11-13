@@ -23,13 +23,14 @@ export function openLevelSelect(
     devMode: boolean,
     onStart: (levelIndex: number) => void,
     onLocked: (message: string) => void,
+    onClose?: () => void,
 ): void {
     const rows = Math.ceil(cfg.levels.length / COLS);
     const gridW = COLS * CELL_W + (COLS - 1) * GAP;
     const gridH = rows * CELL_H + (rows - 1) * GAP;
     const w = gridW + 64;
     const h = gridH + 200;
-    const modal = openModal(root, devMode ? '選擇關卡 · GM' : '選擇關卡', w, h);
+    const modal = openModal(root, devMode ? '選擇關卡 · GM' : '選擇關卡', w, h, onClose);
 
     const hint = devMode ? '開發人員模式：可從任一樓層關開始（尖塔尚未開放）' : '墜落一律回 1F 重來，從第 1 關開始挑戰';
     makeLabel(modal.panel, hint, 22, devMode ? hex('#5fe39a') : hex('#c9d3ff'), { y: h / 2 - 122 });

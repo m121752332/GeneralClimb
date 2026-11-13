@@ -1,6 +1,7 @@
 /**
  * 金手指 (cheat codes) typed in the Settings panel. Pure TS (no `cc`).
- * Input is trimmed, case-insensitive, and may be wrapped in brackets: "RUNGM", " [rungm] ", "【RunGM】".
+ * The code is the plain word, trimmed and case-insensitive: "RUNGM", " rungm ". Brackets are not
+ * part of a code ("[RUNGM]" is unknown).
  */
 
 export type CheatAction = 'devModeOn' | 'devModeOff' | 'unknown' | 'empty';
@@ -10,18 +11,8 @@ const CODES: Record<string, CheatAction> = {
     STOPGM: 'devModeOff',
 };
 
-/** Bracket pairs accepted around a code (ASCII and full-width). */
-const BRACKETS: [string, string][] = [['[', ']'], ['(', ')'], ['{', '}'], ['<', '>'], ['【', '】'], ['［', '］'], ['（', '）'], ['「', '」']];
-
 export function normalizeCheat(input: string): string {
-    let s = (input ?? '').trim();
-    for (const [open, close] of BRACKETS) {
-        if (s.length >= 2 && s.startsWith(open) && s.endsWith(close)) {
-            s = s.slice(open.length, s.length - close.length).trim();
-            break;
-        }
-    }
-    return s.toUpperCase();
+    return (input ?? '').trim().toUpperCase();
 }
 
 export function parseCheat(input: string): CheatAction {

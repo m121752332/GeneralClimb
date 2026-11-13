@@ -11,6 +11,8 @@ export interface SettingsPanelHooks {
     /** Any setting changed (sound icon, GM badge, GameSession.devMode). */
     onChange: () => void;
     toast: (text: string) => void;
+    /** The panel is closing; Home dismisses any toast it raised. */
+    onClose?: () => void;
 }
 
 function makeVolumeSlider(parent: Node, value: number, x: number, y: number, onChange: (v: number) => void): void {
@@ -110,7 +112,7 @@ function uppercaseInPlace(box: EditBox): void {
 }
 
 export function openSettings(root: Node, hooks: SettingsPanelHooks): void {
-    const modal = openModal(root, '設定', W, H);
+    const modal = openModal(root, '設定', W, H, hooks.onClose);
     const p = modal.panel;
     const s = settings().get();
     const labelX = -W / 2 + 56;

@@ -5,26 +5,26 @@ import { parseLevelConfig } from '../assets/scripts/config/LevelConfig.ts';
 import { normalizeCheat, parseCheat } from '../assets/scripts/core/CheatCodes.ts';
 import { levelAccess } from '../assets/scripts/core/LevelAccess.ts';
 
-test('RUNGM turns dev mode on: trimmed, any case, optional brackets', () => {
-    for (const input of ['RUNGM', 'rungm', '  RunGm  ', '[RUNGM]', ' [ rungm ] ', '【RUNGM】', '(RunGM)']) {
+test('RUNGM turns dev mode on: trimmed, any case', () => {
+    for (const input of ['RUNGM', 'rungm', '  RunGm  ']) {
         assert.equal(parseCheat(input), 'devModeOn', input);
     }
 });
 
 test('STOPGM turns dev mode off with the same rules', () => {
-    for (const input of ['STOPGM', 'stopgm', ' StopGM ', '[STOPGM]', '[stopgm]', '【StopGM】']) {
+    for (const input of ['STOPGM', 'stopgm', ' StopGM ']) {
         assert.equal(parseCheat(input), 'devModeOff', input);
     }
 });
 
-test('anything else is unknown, blank input is empty', () => {
-    for (const input of ['RUN GM', 'RUNGMX', '[RUNGM', 'GM', '[[RUNGM]]', 'STOP']) {
+test('brackets are not part of a code; anything else is unknown, blank input is empty', () => {
+    for (const input of ['[RUNGM]', '[rungm]', '【RUNGM】', '(RUNGM)', '[STOPGM]', 'RUN GM', 'RUNGMX', 'GM', 'STOP', '[]']) {
         assert.equal(parseCheat(input), 'unknown', input);
     }
-    for (const input of ['', '   ', '[]', '[ ]']) {
+    for (const input of ['', '   ']) {
         assert.equal(parseCheat(input), 'empty', JSON.stringify(input));
     }
-    assert.equal(normalizeCheat(' [rungm] '), 'RUNGM');
+    assert.equal(normalizeCheat(' rungm '), 'RUNGM');
 });
 
 test('level access: only level 1 without dev mode; dev mode opens floor levels but not the spire', () => {

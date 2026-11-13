@@ -29,4 +29,10 @@ export class Toast {
         this.opacity.opacity = 255;
         tween(this.opacity).delay(seconds).to(0.3, { opacity: 0 }).start();
     }
+
+    /** Dismiss right away, e.g. when the panel it belonged to closes. */
+    hide(): void {
+        Tween.stopAllByTarget(this.opacity);
+        this.opacity.opacity = 0;
+    }
 }

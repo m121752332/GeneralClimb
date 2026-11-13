@@ -104,6 +104,7 @@ export class Home extends Component {
                 this.syncDevMode();
             },
             toast: (text) => this.toast.show(text),
+            onClose: () => this.toast.hide(),
         }), -colX, -345);
         const google = makeButton(this.node, 'Google 登入', btnW, btnH, STYLE.light, () => this.toast.show('Google 登入將於 M3 推出'), colX, -345);
         google.label.node.setPosition(18, 3);
@@ -206,7 +207,7 @@ export class Home extends Component {
             this.toast.show('關卡資料載入中…');
             return;
         }
-        openLevelSelect(this.node, this.config, GameSession.devMode, (i) => this.startGame(i), (msg) => this.toast.show(msg));
+        openLevelSelect(this.node, this.config, GameSession.devMode, (i) => this.startGame(i), (msg) => this.toast.show(msg), () => this.toast.hide());
     }
 
     private storage(): Storage | null {
