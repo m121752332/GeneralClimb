@@ -22,6 +22,7 @@
     "cooldownSec": 4,
     "wind": {
       "everySec": 60,
+      "pushEverySec": 1,
       "firstSec": 60,
       "durationSec": [
         10,

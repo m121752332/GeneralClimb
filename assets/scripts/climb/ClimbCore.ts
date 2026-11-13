@@ -3,7 +3,7 @@
  * per-frame climb simulation. Pure TypeScript on purpose (no `cc` import, type-only
  * imports) so it runs under plain `node --test`. Every tunable number comes from levels.json.
  */
-import type { EventKind, EventsConfig, LevelConfig, LevelDef, WidthConfig } from '../config/LevelConfig';
+import type { EventKind, EventsConfig, LevelConfig, LevelDef, PagodaFlareConfig, WidthConfig } from '../config/LevelConfig';
 
 // ---------------------------------------------------------------- RNG
 
@@ -41,6 +41,9 @@ export interface Wall {
     readonly danger: number;
     /** Column the climber starts on (row 0). */
     readonly startCol: number;
+    /** Pagoda flare (GDD 4): the top `flareRows` rows get `flareExtra` more danger columns per side. */
+    readonly flareRows: number;
+    readonly flareExtra: number;
     /** Keys are `row * cols + col`. */
     readonly obstacles: ReadonlySet<number>;
 }
@@ -48,9 +51,22 @@ export interface Wall {
 /** Rows per obstacle block (GDD: "每 12 列至少 1 個"). */
 export const OBSTACLE_BLOCK_ROWS = 12;
 
-export function zoneOf(wall: Wall, col: number): Zone {
+/** Danger columns per side on a row (wider near the top of a flared section). */
+export function dangerAt(wall: Wall, row: number): number {
+    const flared = wall.flareRows > 0 && row >= wall.rows - wall.flareRows;
+    return Math.min(Math.floor((wall.cols - 1) / 2), wall.danger + (flared ? wall.flareExtra : 0));
+}
+
+export function zoneOf(wall: Wall, col: number, row = 0): Zone {
     if (col < 0 || col >= wall.cols) return 'out';
-    return col < wall.danger || col >= wall.cols - wall.danger ? 'danger' : 'safe';
+    const danger = dangerAt(wall, row);
+    return col < danger || col >= wall.cols - danger ? 'danger' : 'safe';
+}
+
+/** Flare that applies to a level, or none outside `pagodaFlare.levels`. */
+export function flareFor(flare: PagodaFlareConfig, level: LevelDef): { rows: number; extra: number } {
+    const [from, to] = flare.levels;
+    return level.id >= from && level.id <= to ? { rows: flare.topRows, extra: flare.extraDangerPerSide } : { rows: 0, extra: 0 };
 }
 
 export function isObstacle(wall: Wall, col: number, row: number): boolean {
@@ -63,7 +79,7 @@ export function isObstacle(wall: Wall, col: number, row: number): boolean {
  */
 export function hasSafeRoute(wall: Wall): boolean {
     const { cols, rows } = wall;
-    if (zoneOf(wall, wall.startCol) !== 'safe' || isObstacle(wall, wall.startCol, 0)) return false;
+    if (zoneOf(wall, wall.startCol, 0) !== 'safe' || isObstacle(wall, wall.startCol, 0)) return false;
     const seen = new Uint8Array(cols * rows);
     const stack = [wall.startCol];
     seen[wall.startCol] = 1;
@@ -74,7 +90,7 @@ export function hasSafeRoute(wall: Wall): boolean {
         if (row === rows - 1) return true;
         const next: Array<[number, number]> = [[col, row + 1], [col - 1, row], [col + 1, row], [col, row - 1]];
         for (const [c, r] of next) {
-            if (r < 0 || r >= rows || zoneOf(wall, c) !== 'safe') continue;
+            if (r < 0 || r >= rows || zoneOf(wall, c, r) !== 'safe') continue;
             const k = r * cols + c;
             if (seen[k] || wall.obstacles.has(k)) continue;
             seen[k] = 1;
@@ -89,7 +105,7 @@ export function hasSafeRoute(wall: Wall): boolean {
  * cells; a candidate that would cut the safe route is rejected and re-rolled.
  * Row 0 (the start row) never has obstacles.
  */
-export function buildWall(width: WidthConfig, level: LevelDef, rng: Rng): Wall {
+export function buildWall(width: WidthConfig, level: LevelDef, rng: Rng, flare = { rows: 0, extra: 0 }): Wall {
     const obstacles = new Set<number>();
     const wall: Wall = {
         cols: width.cols,
@@ -97,6 +113,8 @@ export function buildWall(width: WidthConfig, level: LevelDef, rng: Rng): Wall {
         safe: width.safe,
         danger: width.danger,
         startCol: Math.floor(width.cols / 2),
+        flareRows: Math.min(flare.rows, level.rows),
+        flareExtra: flare.extra,
         obstacles,
     };
     const blocks = Math.ceil(level.rows / OBSTACLE_BLOCK_ROWS);
@@ -134,11 +152,13 @@ export class EventScheduler {
     left = 0;
     /** Length of the current Active phase, for the HUD time bar. */
     activeTotal = 0;
+    /** Wind direction for the current wind event: -1 blows left, +1 right. */
+    windDir = 1;
 
     private readonly queue: EventKind[] = [];
     private readonly due: Record<EventKind, number>;
     private readonly events: EventsConfig;
-    private readonly windChance: number;
+    private windChance: number;
     private readonly rng: Rng;
 
     constructor(events: EventsConfig, windChance: number, rng: Rng) {
@@ -155,6 +175,11 @@ export class EventScheduler {
     /** The event whose effects apply right now (Active phase only). */
     get activeKind(): EventKind | null {
         return this.state === 'active' ? this.kind : null;
+    }
+
+    /** The run keeps one scheduler across levels; only the wind chance changes per level. */
+    setWindChance(chance: number): void {
+        this.windChance = chance;
     }
 
     get queued(): readonly EventKind[] {
@@ -186,12 +211,13 @@ export class EventScheduler {
     private tick(dt: number): void {
         if (this.state === 'idle') return;
         this.left -= dt;
-        while (this.left <= 0 && this.state !== 'idle') {
+        while (this.left <= 0 && (this.state as SchedulerState) !== 'idle') {
             const carry = this.left;
             if (this.state === 'warning') {
                 const kind = this.kind as EventKind;
                 const [min, max] = this.events[kind].durationSec;
                 this.activeTotal = min + this.rng() * (max - min);
+                if (kind === 'wind') this.windDir = this.rng() < 0.5 ? -1 : 1;
                 this.enter('active', kind, this.activeTotal + carry);
             } else if (this.state === 'active') {
                 this.enter('cooldown', this.kind, this.events.cooldownSec + carry);
@@ -244,10 +270,21 @@ export const FALL_TEXT: Record<FallCause, string> = {
     eagle: '被老鷹看到了',
 };
 
+/** What a run carries from one level into the next (ADR-03: risk is not reset between levels). */
+export interface RunCarry {
+    rng: Rng;
+    scheduler: EventScheduler;
+    risk: number;
+    climbSec: number;
+    runMaxFloor: number | null;
+}
+
 export class ClimbSim {
     readonly level: LevelDef;
+    readonly levelIndex: number;
     readonly wall: Wall;
     readonly scheduler: EventScheduler;
+    readonly seed: number;
 
     phase: Phase = 'climbing';
     fallCause: FallCause | null = null;
@@ -258,35 +295,59 @@ export class ClimbSim {
     fromRow = 0;
     /** Step progress 0..1, or -1 when not stepping. */
     stepT = -1;
+    /** True while the current step is a wind push rather than the player's own move. */
+    pushed = false;
     risk = 0;
     gripping = true;
-    /** Seconds of climbing time; pauses and transitions are never fed in. */
+    /** Seconds of climbing time for the whole run; pauses and transitions are never fed in. */
     climbSec = 0;
     maxRow = 0;
     /** Seconds the eagle has been watching a moving climber (0 when not spotted). */
     eagleSpotSec = 0;
 
-    readonly seed: number;
-
     private readonly cfg: LevelConfig;
+    private readonly rng: Rng;
+    private readonly prevMaxFloor: number | null;
     private idleSec = 0;
     private holdSec = 0;
     private rainMoveSec = 0;
+    private windPushSec = 0;
 
-    constructor(cfg: LevelConfig, levelIndex: number, seed: number) {
+    constructor(cfg: LevelConfig, levelIndex: number, seed: number, carry?: RunCarry) {
         this.cfg = cfg;
         this.seed = seed;
         const level = cfg.levels[levelIndex];
         if (!level) throw new Error(`no level at index ${levelIndex}`);
         const width = cfg.widths[level.width];
-        const rng = createRng(seed);
+        this.rng = carry ? carry.rng : createRng(seed);
         this.level = level;
-        this.wall = buildWall(width, level, rng);
-        this.scheduler = new EventScheduler(cfg.events, level.windChance, rng);
+        this.levelIndex = levelIndex;
+        this.wall = buildWall(width, level, this.rng, flareFor(cfg.pagodaFlare, level));
+        this.scheduler = carry ? carry.scheduler : new EventScheduler(cfg.events, level.windChance, this.rng);
+        this.scheduler.setWindChance(level.windChance);
+        this.risk = carry ? carry.risk : 0;
+        this.climbSec = carry ? carry.climbSec : 0;
+        this.prevMaxFloor = carry ? carry.runMaxFloor : null;
         this.col = this.wall.startCol;
         this.fromCol = this.col;
-        this.gripping = true;
         this.idleSec = cfg.player.gripDelaySec;
+    }
+
+    /**
+     * The next level of the same run (same seed stream, scheduler, risk and time), or null
+     * when there is none or it is a spire level (ladder, not built yet).
+     */
+    next(): ClimbSim | null {
+        if (this.phase !== 'cleared') return null;
+        const nextLevel = this.cfg.levels[this.levelIndex + 1];
+        if (!nextLevel || nextLevel.floorFrom === null) return null;
+        return new ClimbSim(this.cfg, this.levelIndex + 1, this.seed, {
+            rng: this.rng,
+            scheduler: this.scheduler,
+            risk: this.risk,
+            climbSec: this.climbSec,
+            runMaxFloor: this.runMaxFloor,
+        });
     }
 
     get stepping(): boolean {
@@ -316,22 +377,32 @@ export class ClimbSim {
         return this.floorAt(Math.min(this.maxRow, this.wall.rows - 1));
     }
 
+    /** Highest floor reached in the whole run. */
+    get runMaxFloor(): number | null {
+        const here = this.maxFloor;
+        if (here === null) return this.prevMaxFloor;
+        return this.prevMaxFloor === null ? here : Math.max(here, this.prevMaxFloor);
+    }
+
     update(dt: number, dir: Dir): void {
         if (this.phase !== 'climbing' || dt <= 0) return;
         const { player, risk } = this.cfg;
         this.climbSec += dt;
         this.scheduler.update(dt);
+        const active = this.scheduler.activeKind;
 
         const hasInput = dir.dx !== 0 || dir.dy !== 0;
 
         if (this.stepping) {
             this.stepT += dt / player.cellSec;
             if (this.stepT >= 1) {
+                const wasPush = this.pushed;
                 this.stepT = -1;
+                this.pushed = false;
                 this.fromCol = this.col;
                 this.fromRow = this.row;
                 if (this.col < 0 || this.col >= this.wall.cols) {
-                    this.fall('edge');
+                    this.fall(wasPush ? 'wind' : 'edge');
                     return;
                 }
                 if (this.row >= this.wall.rows) {
@@ -339,6 +410,17 @@ export class ClimbSim {
                     return;
                 }
             }
+        }
+
+        // Wind (ADR-04): moving in a gust pushes the climber one cell outward every pushEverySec.
+        if (active === 'wind' && hasInput) {
+            this.windPushSec += dt;
+            if (!this.stepping && this.windPushSec >= this.cfg.events.wind.pushEverySec) {
+                this.windPushSec -= this.cfg.events.wind.pushEverySec;
+                this.push();
+            }
+        } else {
+            this.windPushSec = 0;
         }
 
         if (hasInput && !this.stepping) {
@@ -349,7 +431,7 @@ export class ClimbSim {
             this.holdSec = 0;
         }
 
-        const moving = hasInput || this.stepping;
+        const moving = hasInput || (this.stepping && !this.pushed);
         if (moving) {
             this.idleSec = 0;
             this.gripping = false;
@@ -359,13 +441,12 @@ export class ClimbSim {
         }
 
         // Risk (ADR-03). Zone uses the cell being climbed onto.
-        const zone = zoneOf(this.wall, this.col);
+        const zone = zoneOf(this.wall, this.col, Math.min(this.row, this.wall.rows - 1));
         let perSec = 0;
         let cause: FallCause = 'edge';
         if (zone === 'danger') perSec += risk.dangerPerSec;
         else if (zone === 'safe') perSec += this.gripping ? risk.calmGripPerSec : risk.calmClimbPerSec;
 
-        const active = this.scheduler.activeKind;
         if (active === 'wind' && moving) {
             perSec += risk.windMovePerSec;
             cause = 'wind';
@@ -395,6 +476,20 @@ export class ClimbSim {
         if (this.risk >= risk.max) this.fall(cause);
     }
 
+    /** Outward = towards the nearer edge; from the centre column, the way the wind blows. */
+    private push(): void {
+        const centre = (this.wall.cols - 1) / 2;
+        const dx = this.col < centre ? -1 : this.col > centre ? 1 : this.scheduler.windDir;
+        const row = Math.min(this.row, this.wall.rows - 1);
+        const col = this.col + dx;
+        if (col >= 0 && col < this.wall.cols && isObstacle(this.wall, col, row)) return;
+        this.fromCol = this.col;
+        this.fromRow = this.row;
+        this.col = col;
+        this.stepT = 0;
+        this.pushed = true;
+    }
+
     private tryStep(dir: Dir): void {
         // Vertical first (GDD 3); fall back to the horizontal part when the way up is blocked.
         const options: Array<[number, number]> = [];
@@ -411,6 +506,7 @@ export class ClimbSim {
             this.row = row;
             this.maxRow = Math.max(this.maxRow, Math.min(row, this.wall.rows - 1));
             this.stepT = 0;
+            this.pushed = false;
             return;
         }
     }
@@ -422,6 +518,7 @@ export class ClimbSim {
         this.stepT = -1;
     }
 }
+
 
 /** "1:05.3" style climbing time. */
 export function formatClimbTime(sec: number): string {
