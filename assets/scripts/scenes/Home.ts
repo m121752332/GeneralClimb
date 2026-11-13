@@ -11,6 +11,7 @@ import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
 import { openLevelSelect } from '../ui/LevelSelectPanel';
 import { openSettings } from '../ui/SettingsPanel';
+import { playIntro } from '../ui/IntroOverlay';
 import { Toast } from '../ui/Toast';
 import { STYLE, cachedBrandIcon, hex, loadBrandIcon, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
 import { buildBackdrop } from './HomeBackdrop';
@@ -42,6 +43,18 @@ export class Home extends Component {
         this.toast = new Toast(this.node);
         this.syncDevMode();
         sound().music('home');
+        if (!GameSession.introPlayed) {
+            // GDD §7: the 3 s opening plays once per visit, on top of the finished menu.
+            GameSession.introPlayed = true;
+            // tools/smoke-site.mjs checks that the opening ran and handed over to the menu.
+            const g = globalThis as { __GC_SCENE?: string; __GC_INTRO?: string };
+            g.__GC_SCENE = 'Intro';
+            g.__GC_INTRO = 'playing';
+            playIntro(this.node, () => {
+                g.__GC_SCENE = 'Home';
+                g.__GC_INTRO = 'done';
+            });
+        }
 
         LevelLoader.load().then((cfg) => {
             this.config = cfg;
@@ -202,6 +215,7 @@ export class Home extends Component {
     private startGame(levelIndex = 0): void {
         GameSession.levelIndex = levelIndex;
         GameSession.mode = 'normal';
+        GameSession.pushIn = true;
         if (assetManager.main?.getSceneInfo(CLIMB_SCENE)) {
             director.loadScene(CLIMB_SCENE);
         } else {
