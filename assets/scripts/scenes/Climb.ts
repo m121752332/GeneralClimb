@@ -9,7 +9,8 @@ import { applyScreenFit } from '../core/ScreenFit';
 import {
     ClimbSim, Dir, FALL_TEXT, NO_DIR, dirFromKeys, dirFromStick, formatClimbTime, randomSeed,
 } from '../climb/ClimbCore';
-import { Tower3D } from './Tower3D';
+import { ROW_H } from '../climb/TowerShape';
+import { ENDING_SEC, Tower3D } from './Tower3D';
 
 const { ccclass } = _decorator;
 
@@ -64,7 +65,16 @@ function alpha(c: Color, a: number): Color {
     return new Color(c.r, c.g, c.b, a);
 }
 
-type Mode = 'loading' | 'ready' | 'play' | 'paused' | 'transition' | 'falling' | 'fallen' | 'cleared' | 'error';
+type Mode = 'loading' | 'ready' | 'play' | 'paused' | 'transition' | 'falling' | 'fallen' | 'ending' | 'cleared' | 'error';
+
+/** "1–8F", or 尖塔 on the ladder levels. */
+function floorsText(l: { floors: string; floorFrom: number | null; floorTo: number | null }): string {
+    return l.floorFrom === null ? '尖塔' : `${l.floorFrom}–${l.floorTo}F`;
+}
+
+/** Mini map (top right): height in pixels and the panel's half width. */
+const MINIMAP_H = 300;
+const MINIMAP_HALF_W = 34;
 
 const EVENT_LABEL = { wind: '風', rain: '雨', eagle: '鷹' } as const;
 
@@ -126,6 +136,7 @@ export class Climb extends Component {
     private startIndex = 0;
     private nextSim: ClimbSim | null = null;
     private transSec = 0;
+    private endSec = 0;
 
     start(): void {
         applyScreenFit();
@@ -148,7 +159,7 @@ export class Climb extends Component {
         LevelLoader.load().then((cfg) => {
             this.cfg = cfg;
             this.startIndex = this.resolveStartIndex(cfg);
-            this.tower = new Tower3D(cfg.player.rowsPerFloor);
+            this.tower = new Tower3D(cfg.player.rowsPerFloor, cfg.player.ladderRows);
             return this.tower.init();
         }).then(() => {
             this.newRun();
@@ -208,7 +219,8 @@ export class Climb extends Component {
         this.tower!.snap(this.sim);
         this.mode = 'ready';
         const l = this.sim.level;
-        this.showOverlay(`第 ${l.id} 關 ${l.name}\n${l.floors.replace('-', '–')}\n\n方向鍵 / WASD 或拖曳下半部攀爬\n放開 = 抓牢\n拖曳上半部 / Q E 旋轉視角\n可繞到其他面，轉角是危險區`);
+        const hint = l.floorFrom === null ? '爬梯只能上下，強風時抓牢' : '可繞到其他面，轉角是危險區';
+        this.showOverlay(`第 ${l.id} 關 ${l.name}\n${floorsText(l)}\n\n方向鍵 / WASD 或拖曳下半部攀爬\n放開 = 抓牢\n拖曳上半部 / Q E 旋轉視角\n${hint}`);
     }
 
     update(dt: number): void {
@@ -229,6 +241,8 @@ export class Climb extends Component {
             this.tickFall(dt);
         } else if (this.mode === 'transition') {
             this.tickTransition(dt);
+        } else if (this.mode === 'ending') {
+            this.tickEnding(dt);
         }
         this.render(dt);
     }
@@ -236,7 +250,7 @@ export class Climb extends Component {
     private beginFall(): void {
         this.mode = 'falling';
         this.fallSec = 0;
-        this.fallY = this.tower!.feetY(this.sim as ClimbSim);
+        this.fallY = this.tower!.fallStartY(this.sim as ClimbSim);
         this.fallV = 0;
         this.tumble = 0;
     }
@@ -265,11 +279,29 @@ export class Climb extends Component {
             this.mode = 'transition';
             this.transSec = 0;
             const l = next.level;
-            this.showOverlay(`第 ${sim.level.id} 關完成\n\n第 ${l.id} 關 ${l.name}\n${l.floors.replace('-', '–')}`);
+            this.showOverlay(`第 ${sim.level.id} 關完成\n\n第 ${l.id} 關 ${l.name}\n${floorsText(l)}`);
             return;
         }
+        // Summit: about 10 s sitting on the top looking down over the city, then the result.
+        this.mode = 'ending';
+        this.endSec = 0;
+        this.hideOverlay();
+    }
+
+    private tickEnding(dt: number): void {
+        this.endSec += dt;
+        if (this.endSec > 5 && this.endSec < ENDING_SEC && !this.overlayLabel.node.active) {
+            this.overlayLabel.string = '抵達塔尖！';
+            this.overlayLabel.node.active = true;
+        }
+        if (this.endSec >= ENDING_SEC) this.finishEnding();
+    }
+
+    private finishEnding(): void {
+        const sim = this.sim as ClimbSim;
+        this.endSec = ENDING_SEC;
         this.mode = 'cleared';
-        this.showOverlay(`抵達 ${sim.level.floorTo}F！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}\n\n尖塔段製作中\n點擊或按空白鍵 再玩一次`);
+        this.showOverlay(`抵達塔尖！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}\n種子 ${sim.seed}\n\n點擊或按空白鍵 再玩一次`);
     }
 
     /**
@@ -290,6 +322,11 @@ export class Climb extends Component {
     }
 
     private confirm(): void {
+        if (this.mode === 'ending') {
+            // The ending can be skipped (GDD: from the second time on; kept simple for now).
+            if (this.endSec > 1.5) this.finishEnding();
+            return;
+        }
         if (this.mode === 'fallen' || this.mode === 'cleared') this.newRun();
         else if (this.mode === 'paused') this.togglePause();
     }
@@ -516,7 +553,9 @@ export class Climb extends Component {
         // Rise past the platform between levels, in one continuous move.
         const lift = this.mode === 'transition' ? Math.sin(Math.PI * Math.min(1, this.transSec / TRANSITION_SEC)) * 3 : 0;
         const tower = this.tower as Tower3D;
-        tower.update(dt, sim, {
+        const ending = this.mode === 'ending' || (this.mode === 'cleared' && sim.summit);
+        if (ending) tower.updateEnding(this.endSec);
+        else tower.update(dt, sim, {
             elapsed: this.elapsed,
             fallY: fallen ? this.fallY : null,
             tumble: fallen ? this.tumble : 0,
@@ -527,7 +566,7 @@ export class Climb extends Component {
         });
         tower.camera.convertToUINode(tower.headWorld(this.tmpV), this.node, this.playerUi);
         this.nameTag.node.setPosition(this.playerUi.x, this.playerUi.y + 14);
-        this.nameTag.node.active = tower.climberInView;
+        this.nameTag.node.active = tower.climberInView && !ending;
         this.nameTag.color = sim.tier === 'crisis' && Math.floor(this.elapsed * 10) % 2 === 0 ? C.riskCrisis : C.text;
 
         // Effects layer (screen space). Warning phase gives a softer hint of what is coming.
@@ -629,7 +668,7 @@ export class Climb extends Component {
         this.floorLabel.string = floor === null ? sim.level.name : `${floor}F`;
         this.floorLabel.node.setPosition(0, top - 52);
         const shown = sim.level;
-        this.levelLabel.string = `第 ${shown.id} 關 ${shown.name} ${shown.floors.replace('-', '–')}`;
+        this.levelLabel.string = `第 ${shown.id} 關 ${shown.name} ${floorsText(shown)}`;
         this.levelLabel.node.setPosition(0, top - 106);
         this.timeLabel.string = formatClimbTime(sim.climbSec);
         this.timeLabel.node.setPosition(right - 24, top - 130);
@@ -663,6 +702,7 @@ export class Climb extends Component {
         h.stroke();
         this.riskLabel.node.setPosition(mx + 10, my + mh + 22);
         this.gmLabel.node.setPosition(0, top - 172);
+        if (!ending) this.drawMiniMap(h, tower, sim, right - 52, top - 170);
 
         // Event icon (top-left): blinks during warning, time bar while active.
         const showIcon = kind !== null && (s.state === 'active' || Math.floor(this.elapsed * 8) % 2 === 0);
@@ -699,5 +739,48 @@ export class Climb extends Component {
             h.circle(this.stickOrigin.x + this.stickVec.x, this.stickOrigin.y + this.stickVec.y, 36);
             h.fill();
         }
+    }
+
+    /**
+     * Mini map (top right): the whole 101 silhouette, the current level's band, and a dot
+     * where the climber is. Heights are to scale; widths are exaggerated so it reads.
+     */
+    private drawMiniMap(h: Graphics, tower: Tower3D, sim: ClimbSim, cx: number, topY: number): void {
+        const total = tower.totalHeight;
+        const k = MINIMAP_H / total;
+        const bottom = topY - MINIMAP_H;
+        const wk = (MINIMAP_HALF_W - 8) / 9.6;
+        h.fillColor = new Color(0, 0, 0, 120);
+        h.roundRect(cx - MINIMAP_HALF_W, bottom - 10, MINIMAP_HALF_W * 2, MINIMAP_H + 20, 8);
+        h.fill();
+        // Silhouette, sampled up one side and down the other.
+        const steps = 90;
+        h.fillColor = new Color(90, 170, 180, 230);
+        for (let i = 0; i <= steps; i++) {
+            const y = (total * i) / steps;
+            const x = cx + tower.half(y) * wk;
+            if (i === 0) h.moveTo(x, bottom);
+            else h.lineTo(x, bottom + y * k);
+        }
+        for (let i = steps; i >= 0; i--) {
+            const y = (total * i) / steps;
+            h.lineTo(cx - tower.half(y) * wk, bottom + y * k);
+        }
+        h.close();
+        h.fill();
+        // Current level band.
+        const y0 = tower.levelBottomY;
+        const y1 = y0 + sim.wall.rows * ROW_H;
+        h.fillColor = new Color(255, 211, 74, 70);
+        h.rect(cx - MINIMAP_HALF_W + 3, bottom + y0 * k, MINIMAP_HALF_W * 2 - 6, Math.max(2, (y1 - y0) * k));
+        h.fill();
+        // Climber.
+        const py = bottom + Math.max(0, tower.climberY) * k;
+        h.fillColor = C.text;
+        h.circle(cx, py, 7);
+        h.fill();
+        h.fillColor = C.body;
+        h.circle(cx, py, 5);
+        h.fill();
     }
 }
