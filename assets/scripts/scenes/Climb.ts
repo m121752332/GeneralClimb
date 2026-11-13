@@ -527,6 +527,7 @@ export class Climb extends Component {
         });
         tower.camera.convertToUINode(tower.headWorld(this.tmpV), this.node, this.playerUi);
         this.nameTag.node.setPosition(this.playerUi.x, this.playerUi.y + 14);
+        this.nameTag.node.active = tower.climberInView;
         this.nameTag.color = sim.tier === 'crisis' && Math.floor(this.elapsed * 10) % 2 === 0 ? C.riskCrisis : C.text;
 
         // Effects layer (screen space). Warning phase gives a softer hint of what is coming.

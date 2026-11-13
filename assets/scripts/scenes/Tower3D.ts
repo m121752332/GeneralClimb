@@ -223,6 +223,7 @@ export class Tower3D {
     private limbs: Limb[] = [];
     private followYaw = 0;
     private camYaw = 0;
+    private playerYaw = 0;
     private camY = 0;
     private camHalf = 8;
     private idleOrbitSec = 0;
@@ -503,6 +504,7 @@ export class Tower3D {
         const out = PLAYER_OUT + opts.tumble * 1.2;
         const p = surfacePoint(s, half, wall.cols, wall.faces, out);
         this.player.setPosition(p.x, y, p.z);
+        this.playerYaw = p.yaw;
         this.player.setRotationFromEuler(0, (p.yaw * 180) / Math.PI, 0);
 
         // Pose: lean in when gripping, swing limbs while stepping, tumble when falling.
@@ -545,6 +547,14 @@ export class Tower3D {
         this.userYaw = 0;
         this.camY = y + LOOK_UP;
         this.camHalf = halfAt(this.sections, y);
+    }
+
+    /**
+     * False when the view is turned so far that the climber is round the back of the tower;
+     * the 2D name tag would otherwise float on the wrong face.
+     */
+    get climberInView(): boolean {
+        return Math.abs(angleDelta(this.camYaw, this.playerYaw)) < 1.45;
     }
 
     /** Climber's head in world space, for the name tag and screen effects. */
