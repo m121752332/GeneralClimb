@@ -1,5 +1,5 @@
 import {
-    Camera, Color, Layers, Material, Mesh, MeshRenderer, Node, Vec3, director, primitives, resources, utils,
+    Camera, Color, Layers, Material, Mesh, MeshRenderer, Node, Vec3, director, primitives, resources, utils, view,
 } from 'cc';
 import type { ClimbSim } from '../climb/ClimbCore';
 import { isObstacle, zoneOf } from '../climb/ClimbCore';
@@ -32,8 +32,14 @@ const FOV = 42;
 /** Camera distance from the face: `half * DIST_K + DIST_C`. */
 const DIST_K = 1.6;
 const DIST_C = 13;
-/** The camera looks this far above the climber, to show what's coming. */
-const LOOK_UP = 5;
+/**
+ * Framing: the climber's middle sits this far up the screen (0 = bottom, 1 = top), so there is
+ * room below them and a view of what's coming above. The look-at height is worked out from how
+ * much of the wall is visible at the climber's distance, so it holds on any aspect ratio.
+ */
+const FRAME_AT = 0.42;
+/** Smallest tan(half vertical FOV): on wide screens the horizontal FOV is widened to keep this. */
+const MIN_VTAN = 0.42;
 /** Degrees per second for Q / E, and radians per pixel for drags. */
 const KEY_ORBIT_DEG = 100;
 const DRAG_ORBIT = 0.008;
@@ -646,10 +652,10 @@ export class Tower3D {
             }
         }
         this.camYaw = this.followYaw + this.userYaw;
-        const targetY = y + LOOK_UP + opts.lift;
-        this.camY += (targetY - this.camY) * (1 - Math.exp(-dt * 6));
         this.camHalf += (half - this.camHalf) * (1 - Math.exp(-dt * 3));
         const dist = this.camHalf * (1 + DIST_K) + DIST_C;
+        const targetY = y + this.lookUp(dist, this.camHalf) + opts.lift;
+        this.camY += (targetY - this.camY) * (1 - Math.exp(-dt * 6));
         const cy = this.camY + 1.2 + opts.shake;
         this.camera.node.setPosition(Math.sin(this.camYaw) * dist, cy, Math.cos(this.camYaw) * dist);
         this.camera.node.lookAt(this.tmp.set(0, this.camY, 0));
@@ -661,8 +667,30 @@ export class Tower3D {
         const p = surfacePoint(s, this.half(y + 1.2), sim.wall.cols, sim.wall.faces);
         this.followYaw = p.yaw;
         this.userYaw = 0;
-        this.camY = y + LOOK_UP;
         this.camHalf = this.half(y + 1.2);
+        this.camY = y + this.lookUp(this.camHalf * (1 + DIST_K) + DIST_C, this.camHalf);
+    }
+
+    /**
+     * How far above the climber's feet the camera should look so their middle lands at
+     * FRAME_AT of the screen height. Also widens the view on landscape screens, where a fixed
+     * horizontal FOV would leave only a thin strip of wall round the climber.
+     */
+    private lookUp(dist: number, half: number): number {
+        const vs = view.getVisibleSize();
+        const aspect = vs.height > 0 ? vs.width / vs.height : 0.5;
+        const hTan = Math.tan((FOV * Math.PI) / 360);
+        let vTan = hTan / aspect;
+        if (vTan < MIN_VTAN) {
+            vTan = MIN_VTAN;
+            const fov = (Math.atan(vTan * aspect) * 360) / Math.PI;
+            if (Math.abs(this.camera.fov - fov) > 0.01) this.camera.fov = fov;
+        } else if (this.camera.fov !== FOV) {
+            this.camera.fov = FOV;
+        }
+        // Half the visible height at the climber's depth (they hang just in front of the face).
+        const halfH = vTan * Math.max(4, dist - half);
+        return HEAD / 2 + 2 * (0.5 - FRAME_AT) * halfH;
     }
 
     /**
