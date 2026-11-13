@@ -240,12 +240,15 @@ export class Climb extends Component {
     }
 
     /**
-     * First half: scroll up off the finished level. Halfway: swap in the next wall below the
-     * camera. Second half: keep scrolling up onto its start, so the screen is never empty.
+     * The next wall replaces the finished one on the first frame (its bottom platform is the
+     * same spot as the old top platform), then the camera rises and settles on the start.
      */
     private tickTransition(dt: number): void {
         this.transSec += dt;
-        if (this.nextSim && this.transSec >= TRANSITION_SEC / 2) {
+        if (this.nextSim) {
+            // The old top platform and the new bottom platform are the same place: shift the
+            // camera by the old wall height so the swap is seamless.
+            this.transCam0 -= (this.sim as ClimbSim).wall.rows * CELL;
             this.sim = this.nextSim;
             this.nextSim = null;
             console.log(`[Climb] level ${this.sim.level.id}`);
@@ -554,7 +557,7 @@ export class Climb extends Component {
             }
             const goal = this.makeLabel('FloorTag', this.world, 26, Label.HorizontalAlign.LEFT);
             goal.string = `${floorTo}F 平台`;
-            goal.color = C.platform;
+            goal.color = C.text;
             goal.node.setPosition(-half - 30, top + 64);
         }
         const entrance = this.makeLabel('FloorTag', this.world, 26);
@@ -579,12 +582,9 @@ export class Climb extends Component {
         const tremble = sim.tier !== 'safe' && this.mode === 'play' ? Math.sin(this.elapsed * 60) * 1.5 : 0;
         this.player.setPosition(this.playerX() + tremble, py);
         if (this.mode === 'transition') {
-            const travel = vs.height * 0.6;
+            // Rise past the platform and settle on the next level's start, in one continuous move.
             const t = Math.min(1, this.transSec / TRANSITION_SEC);
-            const ease = (x: number): number => x * x * (3 - 2 * x);
-            this.camY = this.nextSim
-                ? this.transCam0 + ease(t * 2) * travel / 2
-                : this.cellY(0) + this.camOffset() - travel / 2 + ease(t * 2 - 1) * travel / 2;
+            this.camY = this.transCam0 + Math.sin(Math.PI * t) * vs.height * 0.15;
         } else {
             const targetCam = py + this.camOffset();
             this.camY += (targetCam - this.camY) * (1 - Math.exp(-dt * 8));
