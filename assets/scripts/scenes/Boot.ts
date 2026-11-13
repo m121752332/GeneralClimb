@@ -69,7 +69,7 @@ export class Boot extends Component {
             },
             {
                 title: 'NPC 載入',
-                run: async () => '窗內 NPC：M2 開放',
+                run: async () => '窗內 NPC：路人、員工、觀光客',
             },
             {
                 title: '音效',
