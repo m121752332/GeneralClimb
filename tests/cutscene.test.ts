@@ -49,9 +49,15 @@ test('push-in starts wide and high, and lands exactly on the climb view', () => 
     }
 });
 
-test('push-in stays clear of the city blocks (from 60 out, up to 20 wide, near ones at most 22 tall)', () => {
-    // Widest climb view is about 38 from the axis (base half 9.6: 9.6 × 2.6 + 13).
-    // Inside the nearest block faces, and starting above the near rooftops.
-    assert.ok(38 * PUSH_FAR_K < 60 - 10);
-    assert.ok(PUSH_RISE >= 18);
+test('push-in stays clear of the city blocks (from 60 out, up to 20 wide; within 100 at most 22 tall)', () => {
+    // Widest climb view at the base: about 38 from the axis (half 9.6 × 2.6 + 13), camera about 6 up.
+    const end = { x: 0, y: 6, z: 38, lookY: 5 };
+    for (let t = 0; t <= PUSH_IN_SEC; t += 0.02) {
+        const p = pushInPose(end, t);
+        const r = Math.hypot(p.x, p.z);
+        // Anywhere a near block could be (its nearest face is 50 out), stay above its roof.
+        if (r > 50) assert.ok(p.y > 22 + 2, `t=${t.toFixed(2)} r=${r.toFixed(1)} y=${p.y.toFixed(1)}`);
+        // Never reach the taller blocks further out.
+        assert.ok(r < 90);
+    }
 });

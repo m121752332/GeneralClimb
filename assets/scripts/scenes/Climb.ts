@@ -159,6 +159,7 @@ export class Climb extends Component {
     private skipLabel!: Label;
 
     start(): void {
+        (globalThis as { __GC_SCENE?: string }).__GC_SCENE = 'Climb';
         applyScreenFit();
         this.buildNodes();
         this.showOverlay('載入中…');
@@ -721,6 +722,8 @@ export class Climb extends Component {
         tower.camera.convertToUINode(tower.headWorld(this.tmpV), this.node, this.playerUi);
         this.nameTag.node.setPosition(this.playerUi.x, this.playerUi.y + 14);
         this.nameTag.node.active = tower.climberInView && !ending && this.mode !== 'intro';
+        // The push-in is a cutscene: no HUD until it ends.
+        this.hudG.node.active = this.mode !== 'intro';
         if (this.mode === 'intro') {
             this.skipLabel.node.setPosition(0, bottom + 110);
             this.skipLabel.color = alpha(C.text, 150 + Math.round(105 * (0.5 + 0.5 * Math.sin(this.elapsed * 5))));

@@ -1,9 +1,9 @@
 import {
-    _decorator, BlockInputEvents, Color, Component, EventKeyboard, Graphics, Input, Label, Node, UIOpacity, input,
+    _decorator, BlockInputEvents, Color, Component, EventKeyboard, Graphics, Input, Node, UIOpacity, input,
 } from 'cc';
 import { INTRO_SEC, SKIP_GRACE_SEC, introFrame } from '../core/Cutscene';
 import { buildBackdrop } from '../scenes/HomeBackdrop';
-import { hex, makeLabel, makeNode } from './UiKit';
+import { hex, makeLabel, makeNode, roundRect } from './UiKit';
 
 const { ccclass } = _decorator;
 
@@ -119,10 +119,10 @@ class IntroPlayer extends Component {
     private t = 0;
     private art!: Node;
     private opacity!: UIOpacity;
-    private hint!: Label;
+    private hint!: Node;
     private onDone: (() => void) | null = null;
 
-    setup(art: Node, opacity: UIOpacity, hint: Label, onDone: () => void): void {
+    setup(art: Node, opacity: UIOpacity, hint: Node, onDone: () => void): void {
         this.art = art;
         this.opacity = opacity;
         this.hint = hint;
@@ -159,7 +159,7 @@ class IntroPlayer extends Component {
         // Scale about (0, PIVOT_Y) instead of the centre.
         this.art.setPosition(0, PIVOT_Y * (1 - f.scale));
         this.opacity.opacity = Math.round(255 * f.opacity);
-        this.hint.node.active = this.t >= SKIP_GRACE_SEC && this.t < INTRO_SEC - 0.5;
+        this.hint.active = this.t >= SKIP_GRACE_SEC && this.t < INTRO_SEC - 0.5;
         if (f.done) this.finish();
     }
 }
@@ -180,9 +180,10 @@ export function playIntro(root: Node, onDone: () => void): void {
     makeLabel(overlay, '從 1F 徒手爬上塔尖', 40, Color.WHITE, {
         y: 470, bold: true, outline: hex('#2a0d3a'), outlineWidth: 4, shadow: hex('#ff5a3c', 200),
     });
-    const hint = makeLabel(overlay, '點擊或按任意鍵略過 ▶▶', 26, hex('#e8ecff', 220), {
-        y: -560, outline: hex('#0b1024'), outlineWidth: 2,
-    });
-    hint.node.active = false;
-    overlay.addComponent(IntroPlayer).setup(art, opacity, hint, onDone);
+    // Bottom right, clear of the climber, on a dark pill so it reads over the rooftop.
+    const pill = makeNode('SkipHint', overlay, 0, 0, 175, -575);
+    roundRect(pill.addComponent(Graphics), 320, 52, 26, hex('#0b1024', 200), hex('#8fa6ff', 160), 2);
+    makeLabel(pill, '點擊或按任意鍵略過 ▶▶', 24, hex('#e8ecff'), { y: 1 });
+    pill.active = false;
+    overlay.addComponent(IntroPlayer).setup(art, opacity, pill, onDone);
 }

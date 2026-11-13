@@ -38,9 +38,11 @@ export interface CamPose {
 }
 
 /** How far out (× the play distance), how high above and how far up the tower the push-in starts. */
-export const PUSH_FAR_K = 1.3;
-export const PUSH_RISE = 18;
-export const PUSH_LOOK_UP = 16;
+export const PUSH_FAR_K = 2;
+export const PUSH_RISE = 55;
+export const PUSH_LOOK_UP = 30;
+/** Share of the push-in spent closing the distance; the drop to the base takes all of it. */
+export const PUSH_IN_SHARE = 0.7;
 
 /**
  * Start-game push-in: starts wide and high on the same side of the tower, looking up the
@@ -48,12 +50,14 @@ export const PUSH_LOOK_UP = 16;
  * `t` is seconds into the cutscene; at PUSH_IN_SEC the pose is exactly `end`.
  */
 export function pushInPose(end: CamPose, t: number): CamPose {
-    const k = ease(t / PUSH_IN_SEC);
-    const far = 1 + (PUSH_FAR_K - 1) * (1 - k);
+    // Close in first while still high above the rooftops, then drop down to the base.
+    const kIn = ease(t / (PUSH_IN_SEC * PUSH_IN_SHARE));
+    const kDown = ease(t / PUSH_IN_SEC);
+    const far = 1 + (PUSH_FAR_K - 1) * (1 - kIn);
     return {
         x: end.x * far,
-        y: end.y + PUSH_RISE * (1 - k),
+        y: end.y + PUSH_RISE * (1 - kDown),
         z: end.z * far,
-        lookY: end.lookY + PUSH_LOOK_UP * (1 - k),
+        lookY: end.lookY + PUSH_LOOK_UP * (1 - kDown),
     };
 }
