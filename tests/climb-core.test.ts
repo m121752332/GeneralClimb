@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { parseLevelConfig } from '../assets/scripts/config/LevelConfig.ts';
 import {
-    ClimbSim, EventScheduler, NO_DIR, buildWall, createRng, dirFromKeys, dirFromStick,
+    ClimbSim, EventScheduler, NO_DIR, buildWall, dangerAt, flareFor, createRng, dirFromKeys, dirFromStick,
     formatClimbTime, hasSafeRoute, isObstacle, zoneOf,
 } from '../assets/scripts/climb/ClimbCore.ts';
 
@@ -21,9 +21,13 @@ function run(sim: ClimbSim, sec: number, dir = NO_DIR): void {
 function autoClimb(sim: ClimbSim, maxSec = 300): void {
     for (let t = 0; t < maxSec && sim.phase === 'climbing'; t += FRAME) {
         let dir = UP;
+        const r = Math.min(sim.row, sim.wall.rows - 1);
+        const centre = Math.floor(sim.wall.cols / 2);
         if (!sim.stepping && sim.row + 1 < sim.wall.rows && isObstacle(sim.wall, sim.col, sim.row + 1)) {
             const right = sim.col + 1;
-            dir = zoneOf(sim.wall, right) === 'safe' && !isObstacle(sim.wall, right, sim.row) ? { dx: 1, dy: 0 } : { dx: -1, dy: 0 };
+            dir = zoneOf(sim.wall, right, r) === 'safe' && !isObstacle(sim.wall, right, sim.row) ? { dx: 1, dy: 0 } : { dx: -1, dy: 0 };
+        } else if (!sim.stepping && zoneOf(sim.wall, sim.col, r) !== 'safe') {
+            dir = { dx: Math.sign(centre - sim.col), dy: 0 };
         }
         sim.update(FRAME, dir);
     }
@@ -219,4 +223,93 @@ test('eagle: stopping before spotSec is safe, moving through it falls', () => {
 test('formats climbing time', () => {
     assert.equal(formatClimbTime(0), '0:00.0');
     assert.equal(formatClimbTime(65.37), '1:05.3');
+});
+
+test('level 6: medium wall (9 cols), pagoda flare widens danger on the top 24 rows', () => {
+    const c = cfg();
+    const l6 = c.levels[5];
+    const flare = flareFor(c.pagodaFlare, l6);
+    assert.deepEqual(flare, { rows: 24, extra: 1 });
+    assert.deepEqual(flareFor(c.pagodaFlare, c.levels[0]), { rows: 0, extra: 0 });
+    for (let seed = 1; seed <= 100; seed++) {
+        const wall = buildWall(c.widths.medium, l6, createRng(seed), flare);
+        assert.equal(wall.cols, 9);
+        assert.equal(wall.rows, 96);
+        assert.equal(wall.obstacles.size, 16, `seed ${seed}: two obstacles per 12 rows`);
+        assert.equal(dangerAt(wall, 71), 2);
+        assert.equal(dangerAt(wall, 72), 3);
+        assert.equal(zoneOf(wall, 2, 71), 'safe');
+        assert.equal(zoneOf(wall, 2, 72), 'danger');
+        assert.equal(zoneOf(wall, 6, 95), 'danger');
+        assert.ok(hasSafeRoute(wall));
+    }
+});
+
+test('schema requires events.wind.pushEverySec', () => {
+    const bad = JSON.parse(JSON.stringify(raw));
+    delete bad.events.wind.pushEverySec;
+    assert.throws(() => parseLevelConfig(bad), /events\.wind\.pushEverySec/);
+});
+
+test('level 6 can be cleared; floors 43-50', () => {
+    const c = cfg();
+    const sim = new ClimbSim(c, 5, 99);
+    assert.equal(sim.floor, 43);
+    sim.scheduler.setWindChance(0);
+    autoClimb(sim);
+    assert.equal(sim.phase, 'cleared');
+    assert.equal(sim.maxFloor, 50);
+});
+
+test('next level carries risk, time, scheduler and run max floor', () => {
+    const c = cfg();
+    const l1 = new ClimbSim(c, 0, 5);
+    autoClimb(l1);
+    assert.equal(l1.phase, 'cleared');
+    l1.risk = 30;
+    const l2 = l1.next();
+    assert.ok(l2);
+    assert.equal(l2.level.id, 2);
+    assert.equal(l2.risk, 30);
+    assert.equal(l2.climbSec, l1.climbSec);
+    assert.equal(l2.scheduler, l1.scheduler);
+    assert.equal(l2.seed, l1.seed);
+    assert.equal(l2.floor, 9);
+    assert.equal(l2.runMaxFloor, 9);
+    assert.equal(new ClimbSim(c, 0, 5).next(), null, 'only after clearing');
+    const l12 = new ClimbSim(c, 11, 5);
+    l12.phase = 'cleared';
+    assert.equal(l12.next(), null, 'spire is not built yet');
+});
+
+function windSim(): ClimbSim {
+    const c = cfg();
+    const sim = new ClimbSim(c, 5, 11);
+    sim.scheduler.setWindChance(1);
+    run(sim, c.events.wind.firstSec + c.events.warningSec + 0.05);
+    assert.equal(sim.scheduler.activeKind, 'wind');
+    return sim;
+}
+
+test('wind: gripping is safe, moving adds risk and pushes outward', () => {
+    const c = cfg();
+    const sim = windSim();
+    const risk0 = sim.risk;
+    run(sim, 1);
+    assert.equal(sim.col, sim.wall.startCol, 'not pushed while gripping');
+    assert.ok(sim.risk <= risk0);
+    // Step right once (off-centre), then keep climbing up: the gust pushes us further right.
+    run(sim, c.player.cellSec + FRAME, { dx: 1, dy: 0 });
+    const col = sim.col;
+    run(sim, c.events.wind.pushEverySec + 0.2, UP);
+    assert.ok(sim.col > col, `pushed outward from ${col} to ${sim.col}`);
+    assert.ok(sim.risk > 0);
+});
+
+test('wind: pushed past the fall line falls with "wind"', () => {
+    const sim = windSim();
+    sim.col = sim.fromCol = sim.wall.cols - 1;
+    run(sim, 6, UP);
+    assert.equal(sim.phase, 'fallen');
+    assert.equal(sim.fallCause, 'wind');
 });

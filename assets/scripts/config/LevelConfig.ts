@@ -34,7 +34,8 @@ export interface TimedEventConfig {
 export interface EventsConfig {
     warningSec: number;
     cooldownSec: number;
-    wind: TimedEventConfig;
+    /** pushEverySec: moving in a gust pushes the climber one cell outward this often. */
+    wind: TimedEventConfig & { pushEverySec: number };
     rain: TimedEventConfig;
     eagle: TimedEventConfig & { spotSec: number };
 }
@@ -219,6 +220,7 @@ function checkEvents(c: Checker, root: Obj): void {
         c.num(ev, 'firstSec', path, { min: 0 });
         c.pair(ev, 'durationSec', path, { gt: 0 });
         if (kind === 'eagle') c.num(ev, 'spotSec', path, { gt: 0 });
+        if (kind === 'wind') c.num(ev, 'pushEverySec', path, { gt: 0 });
     }
 }
 
