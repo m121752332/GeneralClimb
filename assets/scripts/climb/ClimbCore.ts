@@ -35,7 +35,16 @@ function randInt(rng: Rng, min: number, maxInclusive: number): number {
 export type Zone = 'safe' | 'danger' | 'out';
 
 export interface Wall {
+    /** Columns on one face of the tower. */
     readonly cols: number;
+    /**
+     * Faces the climbable columns wrap around (ADR-10). 1 = a single flat wall with fall
+     * lines on both sides; 4 = the square tower, where stepping past a face's outer column
+     * goes round the corner onto the next face and there is no edge to fall off.
+     */
+    readonly faces: number;
+    /** Columns all the way round: `cols * faces`. Columns are 0..ring-1, face = col / cols. */
+    readonly ring: number;
     readonly rows: number;
     readonly safe: number;
     readonly danger: number;
@@ -44,7 +53,7 @@ export interface Wall {
     /** Pagoda flare (GDD 4): the top `flareRows` rows get `flareExtra` more danger columns per side. */
     readonly flareRows: number;
     readonly flareExtra: number;
-    /** Keys are `row * cols + col`. */
+    /** Keys are `row * ring + col`. */
     readonly obstacles: ReadonlySet<number>;
 }
 
@@ -57,10 +66,21 @@ export function dangerAt(wall: Wall, row: number): number {
     return Math.min(Math.floor((wall.cols - 1) / 2), wall.danger + (flared ? wall.flareExtra : 0));
 }
 
+/** Wraps a column onto the ring on a wrapping tower; unchanged on a flat wall. */
+export function wrapCol(wall: Wall, col: number): number {
+    return wall.faces > 1 ? ((col % wall.ring) + wall.ring) % wall.ring : col;
+}
+
+/** Column within its face, 0..cols-1. */
+export function localCol(wall: Wall, col: number): number {
+    return wrapCol(wall, col) % wall.cols;
+}
+
 export function zoneOf(wall: Wall, col: number, row = 0): Zone {
-    if (col < 0 || col >= wall.cols) return 'out';
+    if (wall.faces === 1 && (col < 0 || col >= wall.cols)) return 'out';
+    const local = localCol(wall, col);
     const danger = dangerAt(wall, row);
-    return col < danger || col >= wall.cols - danger ? 'danger' : 'safe';
+    return local < danger || local >= wall.cols - danger ? 'danger' : 'safe';
 }
 
 /** Flare that applies to a level, or none outside `pagodaFlare.levels`. */
@@ -70,7 +90,7 @@ export function flareFor(flare: PagodaFlareConfig, level: LevelDef): { rows: num
 }
 
 export function isObstacle(wall: Wall, col: number, row: number): boolean {
-    return wall.obstacles.has(row * wall.cols + col);
+    return wall.obstacles.has(row * wall.ring + wrapCol(wall, col));
 }
 
 /**
@@ -78,20 +98,21 @@ export function isObstacle(wall: Wall, col: number, row: number): boolean {
  * obstacles (GDD 4: there is always a route that never touches a danger column).
  */
 export function hasSafeRoute(wall: Wall): boolean {
-    const { cols, rows } = wall;
+    const { ring, rows } = wall;
     if (zoneOf(wall, wall.startCol, 0) !== 'safe' || isObstacle(wall, wall.startCol, 0)) return false;
-    const seen = new Uint8Array(cols * rows);
+    const seen = new Uint8Array(ring * rows);
     const stack = [wall.startCol];
     seen[wall.startCol] = 1;
     while (stack.length > 0) {
         const key = stack.pop() as number;
-        const row = Math.floor(key / cols);
-        const col = key % cols;
+        const row = Math.floor(key / ring);
+        const col = key % ring;
         if (row === rows - 1) return true;
         const next: Array<[number, number]> = [[col, row + 1], [col - 1, row], [col + 1, row], [col, row - 1]];
-        for (const [c, r] of next) {
-            if (r < 0 || r >= rows || zoneOf(wall, c, r) !== 'safe') continue;
-            const k = r * cols + c;
+        for (const [cc, r] of next) {
+            if (r < 0 || r >= rows || zoneOf(wall, cc, r) !== 'safe') continue;
+            const c = wrapCol(wall, cc);
+            const k = r * ring + c;
             if (seen[k] || wall.obstacles.has(k)) continue;
             seen[k] = 1;
             stack.push(k);
@@ -102,13 +123,15 @@ export function hasSafeRoute(wall: Wall): boolean {
 
 /**
  * Builds the wall for one level. Each 12-row block gets `obstaclesPer12Rows` ungrabbable
- * cells; a candidate that would cut the safe route is rejected and re-rolled.
- * Row 0 (the start row) never has obstacles.
+ * cells per face; a candidate that would cut the safe route is rejected and re-rolled.
+ * Row 0 (the start row) never has obstacles. The climber starts in the middle of face 0.
  */
-export function buildWall(width: WidthConfig, level: LevelDef, rng: Rng, flare = { rows: 0, extra: 0 }): Wall {
+export function buildWall(width: WidthConfig, level: LevelDef, rng: Rng, flare = { rows: 0, extra: 0 }, faces = 1): Wall {
     const obstacles = new Set<number>();
     const wall: Wall = {
         cols: width.cols,
+        faces,
+        ring: width.cols * faces,
         rows: level.rows,
         safe: width.safe,
         danger: width.danger,
@@ -122,9 +145,9 @@ export function buildWall(width: WidthConfig, level: LevelDef, rng: Rng, flare =
         const fromRow = Math.max(1, b * OBSTACLE_BLOCK_ROWS);
         const toRow = Math.min(level.rows - 1, (b + 1) * OBSTACLE_BLOCK_ROWS - 1);
         if (fromRow > toRow) continue;
-        for (let n = 0; n < level.obstaclesPer12Rows; n++) {
+        for (let n = 0; n < level.obstaclesPer12Rows * faces; n++) {
             for (let attempt = 0; attempt < 20; attempt++) {
-                const key = randInt(rng, fromRow, toRow) * wall.cols + randInt(rng, 0, wall.cols - 1);
+                const key = randInt(rng, fromRow, toRow) * wall.ring + randInt(rng, 0, wall.ring - 1);
                 if (obstacles.has(key)) continue;
                 obstacles.add(key);
                 if (hasSafeRoute(wall)) break;
@@ -322,7 +345,7 @@ export class ClimbSim {
         this.rng = carry ? carry.rng : createRng(seed);
         this.level = level;
         this.levelIndex = levelIndex;
-        this.wall = buildWall(width, level, this.rng, flareFor(cfg.pagodaFlare, level));
+        this.wall = buildWall(width, level, this.rng, flareFor(cfg.pagodaFlare, level), cfg.tower.faces);
         this.scheduler = carry ? carry.scheduler : new EventScheduler(cfg.events, level.windChance, this.rng);
         this.scheduler.setWindChance(level.windChance);
         this.risk = carry ? carry.risk : 0;
@@ -401,7 +424,7 @@ export class ClimbSim {
                 this.pushed = false;
                 this.fromCol = this.col;
                 this.fromRow = this.row;
-                if (this.col < 0 || this.col >= this.wall.cols) {
+                if (this.wall.faces === 1 && (this.col < 0 || this.col >= this.wall.cols)) {
                     this.fall(wasPush ? 'wind' : 'edge');
                     return;
                 }
@@ -476,13 +499,17 @@ export class ClimbSim {
         if (this.risk >= risk.max) this.fall(cause);
     }
 
-    /** Outward = towards the nearer edge; from the centre column, the way the wind blows. */
+    /**
+     * Outward = towards the nearer edge of the face (a corner, on the tower); from the centre
+     * column, the way the wind blows.
+     */
     private push(): void {
         const centre = (this.wall.cols - 1) / 2;
-        const dx = this.col < centre ? -1 : this.col > centre ? 1 : this.scheduler.windDir;
+        const local = localCol(this.wall, this.col);
+        const dx = local < centre ? -1 : local > centre ? 1 : this.scheduler.windDir;
         const row = Math.min(this.row, this.wall.rows - 1);
-        const col = this.col + dx;
-        if (col >= 0 && col < this.wall.cols && isObstacle(this.wall, col, row)) return;
+        const col = wrapCol(this.wall, this.col + dx);
+        if (zoneOf(this.wall, col, row) !== 'out' && isObstacle(this.wall, col, row)) return;
         this.fromCol = this.col;
         this.fromRow = this.row;
         this.col = col;
@@ -496,10 +523,10 @@ export class ClimbSim {
         if (dir.dy !== 0) options.push([0, Math.sign(dir.dy)]);
         if (dir.dx !== 0) options.push([Math.sign(dir.dx), 0]);
         for (const [dx, dy] of options) {
-            const col = this.col + dx;
+            const col = wrapCol(this.wall, this.col + dx);
             const row = this.row + dy;
             if (row < 0) continue;
-            if (row < this.wall.rows && col >= 0 && col < this.wall.cols && isObstacle(this.wall, col, row)) continue;
+            if (row < this.wall.rows && zoneOf(this.wall, col, row) !== 'out' && isObstacle(this.wall, col, row)) continue;
             this.fromCol = this.col;
             this.fromRow = this.row;
             this.col = col;

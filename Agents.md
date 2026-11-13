@@ -5,7 +5,7 @@
 - 使用者是資深開發者（Java / TypeScript / Vue 3 / Oracle），說明直接、不必解釋基礎概念。
 
 ## 專案是什麼
-2D 垂直攀爬動作遊戲：紅衣攀爬者從台北 101 的 1F 徒手爬到塔尖，共 14 關。
+垂直攀爬動作遊戲：紅衣攀爬者從台北 101 的 1F 徒手爬到塔尖，共 14 關。攀爬關卡是 3D（ADR-10）：以 101 為中心、四面環繞攀爬，鏡頭繞塔軸 360° 旋轉；Boot、Home 仍是 2D UI。
 遇到強風、下雨、老鷹要停下來（放開方向鍵＝抓牢），墜落一律回 1F 重來。
 
 **權威文件（動手前先讀）**
@@ -70,7 +70,7 @@ Components：InputController、RiskSystem、EventScheduler、WeatherSystem、Eag
 ## Cocos 專案位置與指令
 - **repo 根目錄就是 Cocos Creator 3.8.8 專案**（不是 `game/` 子資料夾）。在 Cocos Dashboard 用「匯入」選 `D:\GITLocal\GeneralClimb`，不要用「新建」（會多一層資料夾）。
 - 設計解析度 720 × 1280；`assets/scripts/core/ScreenFit.ts` 依螢幕比例切換 FIXED_WIDTH / FIXED_HEIGHT。
-- 功能裁剪只留 2D 需要的模組（`settings/v2/packages/engine.json`）；要用物理、Spine、TiledMap、RichText 等再打開。
+- 功能裁剪（`settings/v2/packages/engine.json`）：2D 模組加上 `3d`（MeshRenderer、程式產生網格）；要用物理、Spine、TiledMap、RichText 等再打開。3D 一律用頂點色 unlit 材質 `resources/materials/vertex-color.mtl`。
 - 像素素材匯入後 Filter Mode 一律設 Nearest。
 - `npm test`：`node --test` 跑 `tests/`，直接執行 `.ts`，需要 Node 22.18 以上（內建 type stripping）。
 - `npm run sync:levels`：用 `config/levels.json` 覆蓋 `assets/resources/config/levels.json`。

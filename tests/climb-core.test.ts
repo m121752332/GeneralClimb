@@ -4,17 +4,31 @@ import { test } from 'node:test';
 import { parseLevelConfig } from '../assets/scripts/config/LevelConfig.ts';
 import {
     ClimbSim, EventScheduler, NO_DIR, buildWall, dangerAt, flareFor, createRng, dirFromKeys, dirFromStick,
-    formatClimbTime, hasSafeRoute, isObstacle, zoneOf,
+    formatClimbTime, hasSafeRoute, isObstacle, localCol, wrapCol, zoneOf,
 } from '../assets/scripts/climb/ClimbCore.ts';
 
 const raw = JSON.parse(readFileSync(new URL('../assets/resources/config/levels.json', import.meta.url), 'utf8'));
 const cfg = () => parseLevelConfig(raw);
+/** The original flat wall (tower.faces = 1): fall lines on both sides. */
+const flatCfg = () => {
+    const c = cfg();
+    c.tower.faces = 1;
+    return c;
+};
 const UP = { dx: 0, dy: 1 };
 const LEFT = { dx: -1, dy: 0 };
 const FRAME = 1 / 60;
 
 function run(sim: ClimbSim, sec: number, dir = NO_DIR): void {
     for (let t = 0; t < sec && sim.phase === 'climbing'; t += FRAME) sim.update(FRAME, dir);
+}
+
+/** Takes exactly n steps in one direction, then lets go until the last step lands. */
+function steps(sim: ClimbSim, n: number, dir: { dx: number; dy: number }): void {
+    for (let i = 0; i < n && sim.phase === 'climbing'; i++) {
+        sim.update(FRAME, dir);
+        while (sim.stepping && sim.phase === 'climbing') sim.update(FRAME, NO_DIR);
+    }
 }
 
 /** Climbs straight up, side-stepping obstacles inside the safe zone. */
@@ -135,8 +149,8 @@ test('one cell per cellSec; release grips after gripDelaySec', () => {
     assert.equal(sim.gripping, true);
 });
 
-test('danger zone adds risk; stepping past the outer column falls with "edge"', () => {
-    const c = cfg();
+test('flat wall: danger zone adds risk; stepping past the outer column falls with "edge"', () => {
+    const c = flatCfg();
     const sim = new ClimbSim(c, 0, 7);
     // 5 -> 4 -> 3 -> 2 are safe, 1 and 0 danger, -1 is the fall line.
     for (let i = 0; i < 4 && sim.phase === 'climbing'; i++) {
@@ -152,7 +166,7 @@ test('danger zone adds risk; stepping past the outer column falls with "edge"', 
 });
 
 test('risk reaching max in the danger zone also falls', () => {
-    const c = cfg();
+    const c = flatCfg();
     const sim = new ClimbSim(c, 0, 7);
     run(sim, 4 * (c.player.cellSec + FRAME), LEFT);
     run(sim, 10);
@@ -177,8 +191,8 @@ test('cannot climb below 1F or into obstacles', () => {
     run(sim, 1, { dx: 0, dy: -1 });
     assert.equal(sim.row, 0);
     const [key] = sim.wall.obstacles;
-    const row = Math.floor(key / sim.wall.cols);
-    const col = key % sim.wall.cols;
+    const row = Math.floor(key / sim.wall.ring);
+    const col = key % sim.wall.ring;
     sim.col = sim.fromCol = col;
     sim.row = sim.fromRow = row - 1;
     sim.update(FRAME, UP);
@@ -282,8 +296,7 @@ test('next level carries risk, time, scheduler and run max floor', () => {
     assert.equal(l12.next(), null, 'spire is not built yet');
 });
 
-function windSim(): ClimbSim {
-    const c = cfg();
+function windSim(c = cfg()): ClimbSim {
     const sim = new ClimbSim(c, 5, 11);
     sim.scheduler.setWindChance(1);
     run(sim, c.events.wind.firstSec + c.events.warningSec + 0.05);
@@ -306,10 +319,57 @@ test('wind: gripping is safe, moving adds risk and pushes outward', () => {
     assert.ok(sim.risk > 0);
 });
 
-test('wind: pushed past the fall line falls with "wind"', () => {
-    const sim = windSim();
+test('flat wall: wind pushing past the fall line falls with "wind"', () => {
+    const sim = windSim(flatCfg());
     sim.col = sim.fromCol = sim.wall.cols - 1;
     run(sim, 6, UP);
     assert.equal(sim.phase, 'fallen');
     assert.equal(sim.fallCause, 'wind');
+});
+
+test('tower: four faces wrap; past the outer column goes round the corner, no edge fall', () => {
+    const c = cfg();
+    const sim = new ClimbSim(c, 0, 7);
+    assert.equal(sim.wall.faces, 4);
+    assert.equal(sim.wall.ring, 44);
+    assert.equal(sim.wall.obstacles.size, 32, 'one obstacle per 12 rows per face');
+    assert.ok(hasSafeRoute(sim.wall));
+    // 5 -> 0 is face 0, one more step left lands on face 3's right-hand column.
+    steps(sim, 6, LEFT);
+    assert.equal(sim.phase, 'climbing');
+    assert.equal(sim.col, 43);
+    assert.equal(localCol(sim.wall, sim.col), 10);
+    assert.equal(zoneOf(sim.wall, sim.col), 'danger', 'corners are danger on both sides');
+    // Keep going: through the corner and into face 3's safe zone (risk 15/s for ~1.4 s is survivable).
+    steps(sim, 3, LEFT);
+    assert.equal(sim.phase, 'climbing');
+    assert.equal(sim.col, 40);
+    assert.equal(zoneOf(sim.wall, sim.col), 'safe');
+});
+
+test('tower: zones and obstacles repeat per face; wrapCol normalises', () => {
+    const c = cfg();
+    const wall = buildWall(c.widths.wide, c.levels[0], createRng(3), undefined, 4);
+    assert.deepEqual([0, 1, 2, 10, 11, 12, 13, 21, 22, 43].map((col) => zoneOf(wall, col)),
+        ['danger', 'danger', 'safe', 'danger', 'danger', 'danger', 'safe', 'danger', 'danger', 'danger']);
+    assert.equal(wrapCol(wall, -1), 43);
+    assert.equal(wrapCol(wall, 44), 0);
+    assert.equal(zoneOf(wall, -1), 'danger', 'no fall line on a tower');
+    for (const key of wall.obstacles) assert.equal(isObstacle(wall, key % 44, Math.floor(key / 44)), true);
+});
+
+test('tower: wind at a corner pushes round it instead of off the wall', () => {
+    const sim = windSim();
+    sim.col = sim.fromCol = sim.wall.cols - 1;
+    run(sim, 1.3, UP);
+    assert.notEqual(sim.fallCause, 'wind');
+    assert.ok(sim.col >= sim.wall.cols, `pushed onto the next face, col ${sim.col}`);
+});
+
+test('schema: tower.faces must be 1 or 4', () => {
+    const bad = JSON.parse(JSON.stringify(raw));
+    bad.tower.faces = 3;
+    assert.throws(() => parseLevelConfig(bad), /tower\.faces/);
+    delete bad.tower;
+    assert.throws(() => parseLevelConfig(bad), /tower/);
 });
