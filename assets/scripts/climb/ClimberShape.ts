@@ -3,11 +3,11 @@
  * Pure TypeScript (no `cc`) so it can be unit-tested; Tower3D turns each part into a mesh.
  *
  * A chibi general in a red robe with gold trim, a red cape, dark trousers and boots, black
- * hair in a topknot with a small gold crown, and a face (eyes, brows, nose, mouth, cheeks).
+ * short black hair, and a face (eyes, brows, nose, mouth, cheeks).
  * Rounded parts are low-poly ellipsoids and lathes with per-vertex lighting baked into the
  * vertex colours (same unlit material as the tower), so the whole figure is ~2k triangles.
  *
- * Model space: feet at y = 0, about 1.9 units tall, facing -Z (into the wall; the camera
+ * Model space: feet at y = 0, about 1.85 units tall, facing -Z (into the wall; the camera
  * mostly sees the back). Limb pivots and lengths match the old block figure, so the poses in
  * Tower3D (climb, walk, fall, seated ending) still fit.
  */
@@ -242,14 +242,16 @@ function buildTorso(): ClimberPart {
     for (const sx of [-1, 1]) b.ellipsoid([sx * 0.245, 1.5, 0.01], [0.04, 0.06, 0.04], C.skin, 6, 4);
     // Hair: a cap over the top, back and sides, leaving the face and ears open.
     b.ellipsoid([0, 1.535, 0.012], [0.265, 0.262, 0.256], C.hair, 14, 10,
-        (d) => d[1] > 0.32 || (d[2] > -0.15 && d[1] > -0.75) || (Math.abs(d[0]) > 0.82 && d[1] > -0.1));
-    // Topknot with a small gold crown and a jade stone in front.
-    b.ellipsoid([0, 1.85, 0.03], [0.095, 0.1, 0.095], C.hair, 8, 6);
-    b.lathe(0, 0.03, [[0.105, 1.74, 0.115, 1.83, C.gold]], 10, 1, { top: C.gold });
-    b.flat([-0.07, 1.8, -0.08], [0.07, 1.8, -0.08], [0.0, 1.96, -0.075], [0.0, 1.96, -0.075], C.gold);
-    b.flat([-0.12, 1.79, -0.04], [-0.06, 1.79, -0.08], [-0.1, 1.9, -0.06], [-0.1, 1.9, -0.06], C.gold);
-    b.flat([0.06, 1.79, -0.08], [0.12, 1.79, -0.04], [0.1, 1.9, -0.06], [0.1, 1.9, -0.06], C.gold);
-    b.ellipsoid([0, 1.83, -0.085], [0.024, 0.024, 0.012], C.jade, 6, 4);
+        (d) => d[1] > 0.32 || (d[2] > -0.15 && d[1] > -0.6) || (Math.abs(d[0]) > 0.82 && d[1] > -0.1));
+    // Short hair: a few tufts on the crown and a fringe over the forehead, no topknot.
+    for (const [tx, ty, tz, rx, ry, rz] of [
+        [0, 1.775, 0.02, 0.15, 0.06, 0.15],
+        [-0.1, 1.755, -0.05, 0.09, 0.05, 0.09],
+        [0.1, 1.755, -0.05, 0.09, 0.05, 0.09],
+        [0, 1.765, 0.12, 0.12, 0.05, 0.1],
+        [-0.07, 1.665, -0.2, 0.07, 0.035, 0.04],
+        [0.06, 1.67, -0.2, 0.08, 0.035, 0.04],
+    ] as const) b.ellipsoid([tx, ty, tz], [rx, ry, rz], C.hair, 7, 4);
 
     // Face (-Z): eyes with pupils and catch-lights, determined brows, nose, mouth, cheeks.
     for (const sx of [-1, 1]) {
@@ -268,7 +270,7 @@ function buildTorso(): ClimberPart {
         const cx = sx * 0.155;
         b.ellipsoid([cx, 1.445, faceZ(cx, 1.445) + 0.008], [0.042, 0.024, 0.012], C.blush, 6, 4);
     }
-    b.ellipsoid([0, 1.462, faceZ(0, 1.462) + 0.006], [0.02, 0.02, 0.018], C.skin, 6, 4);
+    b.ellipsoid([0, 1.462, faceZ(0, 1.462) + 0.006], [0.02, 0.02, 0.018], C.skin, 5, 3);
     b.ellipsoid([0, 1.408, faceZ(0, 1.408) + 0.008], [0.052, 0.028, 0.014], C.mouth, 8, 5);
     return b.part('Torso', [0, 0, 0]);
 }
