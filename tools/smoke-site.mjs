@@ -30,14 +30,14 @@ try {
     page.on('response', (r) => { if (r.status() >= 400) problems.push(`HTTP ${r.status()}: ${r.url()}`); });
 
     await page.goto(`http://localhost:${port}/`);
-    // Boot.ts sets its status label to "... levels.json vN OK ..." on success (also kept in
-    // window.__GC_BOOT, because Home replaces the scene shortly after) or "... 載入失敗 ..." on failure.
+    // Boot.ts sets window.__GC_BOOT to the stage summary (containing "levels.json vN OK") once every
+    // stage is done, just before Home replaces the scene; on failure its labels show "... 載入失敗".
     const handle = await page.waitForFunction(() => {
         if (globalThis.__GC_BOOT) return globalThis.__GC_BOOT;
         const scene = globalThis.cc?.director?.getScene();
         if (!scene || scene.name !== 'Boot') return null;
         const text = scene.getComponentsInChildren(globalThis.cc.Label).map((l) => l.string).join('\n');
-        return /OK|失敗/.test(text) ? text : null;
+        return /失敗/.test(text) ? text : null; // success is reported via __GC_BOOT once every stage is done
     }, null, { timeout: TIMEOUT_MS });
     const status = await handle.jsonValue();
     console.log(`Boot status:\n${status}`);
