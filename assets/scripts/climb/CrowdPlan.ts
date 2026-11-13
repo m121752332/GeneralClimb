@@ -28,14 +28,13 @@ export interface CrowdWall {
     readonly rows: number;
 }
 
-/** Window spots per floor: always one, a second on about half the floors. */
-export const SECOND_NPC_CHANCE = 0.5;
-/** Columns kept between two NPCs on the same floor. */
-export const MIN_GAP = 2;
-/** NPCs only react when the climber is this many floors away or closer. */
-export const REACT_FLOORS = 2;
-/** …and wave when the climber is this close along the ring, on the same or next floor. */
-export const WAVE_COLS = 3;
+/** Tunables, from levels.json `crowd` (see LevelConfig.CrowdConfig). */
+export interface CrowdTuning {
+    secondChance: number;
+    minGap: number;
+    reactFloors: number;
+    waveCols: number;
+}
 
 /** Small deterministic PRNG (mulberry32), so a level always gets the same crowd. */
 export function hashRng(seed: number): () => number {
@@ -61,7 +60,7 @@ export function ringDistance(a: number, b: number, ring: number, faces: number):
  * a danger column or a vent. Ladder walls (one column) get no crowd.
  */
 export function planCrowd(
-    wall: CrowdWall, rowsPerFloor: number, levelId: number, clear: (col: number, row: number) => boolean,
+    wall: CrowdWall, rowsPerFloor: number, levelId: number, tuning: CrowdTuning, clear: (col: number, row: number) => boolean,
 ): NpcSpot[] {
     if (wall.cols <= 1) return [];
     const rnd = hashRng(levelId * 7919 + 101);
@@ -74,11 +73,11 @@ export function planCrowd(
             for (let r = f * rowsPerFloor; r < (f + 1) * rowsPerFloor && ok; r++) ok = clear(c, r);
             if (ok) free.push(c);
         }
-        const want = rnd() < SECOND_NPC_CHANCE ? 2 : 1;
+        const want = rnd() < tuning.secondChance ? 2 : 1;
         const picked: number[] = [];
         for (let tries = 0; tries < 8 && picked.length < want && free.length > 0; tries++) {
             const c = free[Math.floor(rnd() * free.length)];
-            if (picked.some((p) => ringDistance(p, c, wall.ring, wall.faces) < MIN_GAP)) continue;
+            if (picked.some((p) => ringDistance(p, c, wall.ring, wall.faces) < tuning.minGap)) continue;
             picked.push(c);
         }
         for (const col of picked) {
@@ -99,11 +98,11 @@ export interface ClimberView {
 }
 
 /** How an NPC behaves this frame. */
-export function npcMood(spot: NpcSpot, climber: ClimberView, ring: number, faces: number): NpcMood {
+export function npcMood(spot: NpcSpot, climber: ClimberView, ring: number, faces: number, tuning: CrowdTuning): NpcMood {
     const df = Math.abs(climber.floor - (spot.floor + 0.5));
-    if (df > REACT_FLOORS) return 'idle';
+    if (df > tuning.reactFloors) return 'idle';
     const dc = ringDistance(spot.col, climber.col, ring, faces);
     if (climber.alarmed && df <= 1.5) return 'worried';
-    if (df <= 1.5 && dc <= WAVE_COLS) return spot.kind === 'tourist' ? 'photo' : 'wave';
+    if (df <= 1.5 && dc <= tuning.waveCols) return spot.kind === 'tourist' ? 'photo' : 'wave';
     return spot.kind === 'tourist' ? 'photo' : 'idle';
 }

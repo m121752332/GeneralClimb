@@ -1,7 +1,7 @@
 import { Color, Layers, Node } from 'cc';
 import type { ClimbSim } from '../climb/ClimbCore';
 import { isObstacle, zoneOf } from '../climb/ClimbCore';
-import { type NpcKind, type NpcMood, type NpcSpot, npcMood, planCrowd } from '../climb/CrowdPlan';
+import { type CrowdTuning, type NpcKind, type NpcMood, type NpcSpot, npcMood, planCrowd } from '../climb/CrowdPlan';
 import { ROW_H, type Section, halfAt, surfacePoint } from '../climb/TowerShape';
 import { MeshBuilder, type V3 } from './MeshKit';
 
@@ -85,11 +85,13 @@ export class WindowCrowd {
     private readonly sections: readonly Section[];
     private readonly rowsPerFloor: number;
     private readonly makeMesh: MakeMesh;
+    private readonly tuning: CrowdTuning;
     private node: Node | null = null;
     private meshes: { destroy(): void }[] = [];
     private actors: Actor[] = [];
 
-    constructor(parent: Node, sections: readonly Section[], rowsPerFloor: number, makeMesh: MakeMesh) {
+    constructor(parent: Node, sections: readonly Section[], rowsPerFloor: number, tuning: CrowdTuning, makeMesh: MakeMesh) {
+        this.tuning = tuning;
         this.parent = parent;
         this.sections = sections;
         this.rowsPerFloor = rowsPerFloor;
@@ -112,7 +114,7 @@ export class WindowCrowd {
     build(sim: ClimbSim, baseY: number): void {
         this.clear();
         const { wall, level } = sim;
-        const spots = planCrowd(wall, this.rowsPerFloor, level.id,
+        const spots = planCrowd(wall, this.rowsPerFloor, level.id, this.tuning,
             (c, r) => zoneOf(wall, c, r) === 'safe' && !isObstacle(wall, c, r));
         if (spots.length === 0) return;
         this.node = new Node('WindowCrowd');
@@ -245,7 +247,7 @@ export class WindowCrowd {
         const k = 1 - Math.exp(-dt * 10);
         for (const a of this.actors) {
             a.t += dt;
-            const mood = npcMood(a.spot, view, sim.wall.ring, sim.wall.faces);
+            const mood = npcMood(a.spot, view, sim.wall.ring, sim.wall.faces, this.tuning);
             const [l, r] = armTargets(mood, a.t);
             a.angL += (l - a.angL) * k;
             a.angR += (r - a.angR) * k;

@@ -10,6 +10,7 @@ import {
 import { climberParts } from '../climb/ClimberShape';
 import { MeshBuilder, type V3 } from './MeshKit';
 import { WindowCrowd } from './WindowCrowd';
+import type { CrowdTuning } from '../climb/CrowdPlan';
 
 /**
  * 3D view of the climb (ADR-10): a low-poly Taipei 101 built in code, the current level's
@@ -213,7 +214,10 @@ export class Tower3D {
     private readonly tmp = new Vec3();
     private readonly tmp2 = new Vec3();
 
-    constructor(rowsPerFloor: number, ladderRows: number) {
+    private readonly crowdTuning: CrowdTuning;
+
+    constructor(rowsPerFloor: number, ladderRows: number, crowdTuning: CrowdTuning) {
+        this.crowdTuning = crowdTuning;
         this.rowsPerFloor = rowsPerFloor;
         this.ladderRows = ladderRows;
         this.sections = towerSections(rowsPerFloor);
@@ -242,7 +246,7 @@ export class Tower3D {
     async init(): Promise<void> {
         this.material = await loadMaterial();
         this.addMesh('Scenery', this.buildScenery());
-        this.crowd = new WindowCrowd(this.root, this.sections, this.rowsPerFloor, (name, mb, parent) => {
+        this.crowd = new WindowCrowd(this.root, this.sections, this.rowsPerFloor, this.crowdTuning, (name, mb, parent) => {
             const { node, mesh } = this.addMesh(name, mb, parent);
             return { node, destroy: () => mesh.destroy() };
         });

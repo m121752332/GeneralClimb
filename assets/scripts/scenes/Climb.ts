@@ -175,7 +175,7 @@ export class Climb extends Component {
         LevelLoader.load().then((cfg) => {
             this.cfg = cfg;
             this.startIndex = this.resolveStartIndex(cfg);
-            this.tower = new Tower3D(cfg.player.rowsPerFloor, cfg.player.ladderRows);
+            this.tower = new Tower3D(cfg.player.rowsPerFloor, cfg.player.ladderRows, cfg.crowd);
             return this.tower.init();
         }).then(() => {
             this.newRun();
