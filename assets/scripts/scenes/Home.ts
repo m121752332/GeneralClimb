@@ -121,13 +121,13 @@ export class Home extends Component {
     private buildCorners(): void {
         // Sound on / off, pinned to the visible top-right corner.
         const size = 76;
-        const sound = makeNode('Sound', this.node, size, size);
-        const w = sound.addComponent(Widget);
+        const soundBtn = makeNode('Sound', this.node, size, size);
+        const w = soundBtn.addComponent(Widget);
         w.isAlignTop = true;
         w.isAlignRight = true;
         w.top = 24;
         w.right = 24;
-        const g = sound.addComponent(Graphics);
+        const g = soundBtn.addComponent(Graphics);
         this.drawSound = (): void => {
             const muted = settings().get().muted;
             g.clear();
@@ -151,11 +151,11 @@ export class Home extends Component {
             }
         };
         this.drawSound();
-        const btn = sound.addComponent(Button);
-        btn.target = sound;
+        const btn = soundBtn.addComponent(Button);
+        btn.target = soundBtn;
         btn.transition = Button.Transition.SCALE;
         btn.zoomScale = 0.9;
-        sound.on(Button.EventType.CLICK, () => {
+        soundBtn.on(Button.EventType.CLICK, () => {
             const muted = settings().set({ muted: !settings().get().muted }).muted;
             this.drawSound?.();
             sound().applyVolume();
