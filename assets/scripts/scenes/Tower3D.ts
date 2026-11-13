@@ -667,8 +667,8 @@ export class Tower3D {
 
     /**
      * Summit ending (about ENDING_SEC): the climber sits on the edge of the summit ring
-     * facing the city; the camera starts over their shoulder looking down at the streets,
-     * then pulls back and circles the spire.
+     * facing the city; the camera eases in from a three-quarter view outside the ring,
+     * then rises, pulls back and circles round, tilting down to the streets.
      */
     updateEnding(t: number): void {
         const top = summitY(this.rowsPerFloor, this.ladderRows);
@@ -689,22 +689,18 @@ export class Tower3D {
             const k = Math.min(1, Math.max(0, x));
             return k * k * (3 - 2 * k);
         };
-        const p = this.tmp2.set(0, top, seat);
-        // Over the right shoulder (seen from behind), looking down and out over the city.
-        // Far enough back and up that the (scaled) climber sits in the lower corner of the frame.
-        const shoulder = { x: 2.3, y: top + 4.0, z: -0.5 };
-        const down = { x: -0.3, y: top - 30, z: seat + 25 };
+        // Orbit the seated climber from outside the ring (never over the needle side), so the
+        // ring and spire stay behind or below the climber instead of in front of the lens.
+        // 0–3.5 s: slow push from a side three-quarter view to a front three-quarter view.
+        // 3.5 s–end: rise and pull out while circling, tilting down to the city below.
+        const c = this.tmp2.set(0, top + 0.8, seat);
+        const a = smooth(t / 3.5);
         const u = smooth((t - 3.5) / (ENDING_SEC - 3.5));
-        const phi0 = Math.atan2(shoulder.x, shoulder.z);
-        const r0 = Math.hypot(shoulder.x, shoulder.z);
-        const phi = phi0 + u * Math.PI * 1.2;
-        const r = r0 + (32 - r0) * u;
-        this.camera.node.setPosition(Math.sin(phi) * r, shoulder.y + u * 9, Math.cos(phi) * r);
-        this.camera.node.lookAt(this.tmp.set(
-            down.x + (p.x - down.x) * u,
-            down.y + (p.y + 1.2 - down.y) * u,
-            down.z + (p.z - down.z) * u,
-        ));
+        const phi = 1.25 - 0.35 * a + u * Math.PI * 1.1;
+        const r = 5.2 - 0.6 * a + (20 - 4.6) * u;
+        const h = 1.5 + 0.3 * a + 8 * u;
+        this.camera.node.setPosition(c.x + Math.sin(phi) * r, c.y + h, c.z + Math.cos(phi) * r);
+        this.camera.node.lookAt(this.tmp.set(c.x, c.y - 0.2 - u * 3, c.z));
         this.camYaw = phi;
     }
 
