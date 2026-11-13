@@ -26,9 +26,11 @@ export class Home extends Component {
     private toast!: Toast;
     private config: LevelConfig | null = null;
     private drawSound: (() => void) | null = null;
+    private gmBadge: Node | null = null;
 
     onLoad(): void {
         (globalThis as { __GC_SCENE?: string }).__GC_SCENE = 'Home';
+        GameSession.devMode = settings().get().devMode;
     }
 
     start(): void {
@@ -38,6 +40,7 @@ export class Home extends Component {
         this.buildMenu();
         this.buildCorners();
         this.toast = new Toast(this.node);
+        this.syncDevMode();
 
         LevelLoader.load().then((cfg) => {
             this.config = cfg;
@@ -88,14 +91,20 @@ export class Home extends Component {
         roundRect(bestBg, 380, 54, 27, hex('#0b1024', 190), hex('#ffc94a', 160), 2);
         makeLabel(best, formatBest(readLocalBest(this.storage())), 26, hex('#ffe2a0'), { bold: true });
 
-        makeButton(this.node, '開始遊戲', 460, 112, STYLE.primary, () => this.startGame(), 0, -110);
+        makeButton(this.node, '開始遊戲', 460, 112, STYLE.primary, () => this.startGame(0), 0, -110);
 
         const colX = 158;
         const btnW = 296;
         const btnH = 86;
         makeButton(this.node, '選擇關卡', btnW, btnH, STYLE.secondary, () => this.openLevels(), -colX, -245);
         makeButton(this.node, '練習模式', btnW, btnH, STYLE.secondary, () => this.toast.show('練習模式即將推出'), colX, -245);
-        makeButton(this.node, '設定', btnW, btnH, STYLE.secondary, () => openSettings(this.node, () => this.drawSound?.()), -colX, -345);
+        makeButton(this.node, '設定', btnW, btnH, STYLE.secondary, () => openSettings(this.node, {
+            onChange: () => {
+                this.drawSound?.();
+                this.syncDevMode();
+            },
+            toast: (text) => this.toast.show(text),
+        }), -colX, -345);
         const google = makeButton(this.node, 'Google 登入', btnW, btnH, STYLE.light, () => this.toast.show('Google 登入將於 M3 推出'), colX, -345);
         google.label.node.setPosition(18, 3);
         const g = makeNode('G', google.node, 0, 0, -btnW / 2 + 40, 3).addComponent(Graphics);
@@ -151,6 +160,18 @@ export class Home extends Component {
             this.toast.show(muted ? '已靜音' : '已開啟聲音', 1);
         });
 
+        // "GM" badge while developer mode (金手指) is on, pinned to the visible top-left corner.
+        const gm = makeNode('GmBadge', this.node, 96, 52);
+        const gw = gm.addComponent(Widget);
+        gw.isAlignTop = true;
+        gw.isAlignLeft = true;
+        gw.top = 36;
+        gw.left = 24;
+        roundRect(gm.addComponent(Graphics), 96, 52, 26, hex('#ffc94a'), hex('#fff1c2'), 3);
+        makeLabel(gm, 'GM', 30, hex('#3a2400'), { bold: true, y: 1 });
+        gm.active = false;
+        this.gmBadge = gm;
+
         // Version, pinned to the visible bottom-right corner.
         const ver = makeNode('Version', this.node, 320, 40);
         const vw = ver.addComponent(Widget);
@@ -163,13 +184,20 @@ export class Home extends Component {
         this.version.node.setPosition(160, 0);
     }
 
-    private startGame(): void {
-        GameSession.levelIndex = 0;
+    /** Settings.devMode is the source of truth; mirror it into GameSession and the GM badge. */
+    private syncDevMode(): void {
+        const on = settings().get().devMode;
+        GameSession.devMode = on;
+        if (this.gmBadge) this.gmBadge.active = on;
+    }
+
+    private startGame(levelIndex = 0): void {
+        GameSession.levelIndex = levelIndex;
         GameSession.mode = 'normal';
         if (assetManager.main?.getSceneInfo(CLIMB_SCENE)) {
             director.loadScene(CLIMB_SCENE);
         } else {
-            this.toast.show('第 1 關製作中');
+            this.toast.show(`第 ${levelIndex + 1} 關製作中`);
         }
     }
 
@@ -178,7 +206,7 @@ export class Home extends Component {
             this.toast.show('關卡資料載入中…');
             return;
         }
-        openLevelSelect(this.node, this.config, () => this.startGame(), () => this.toast.show('尚未解鎖：墜落一律從 1F 重來'));
+        openLevelSelect(this.node, this.config, GameSession.devMode, (i) => this.startGame(i), (msg) => this.toast.show(msg));
     }
 
     private storage(): Storage | null {

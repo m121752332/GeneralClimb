@@ -24,7 +24,7 @@ test('defaults when storage is empty', () => {
 test('set persists and a new store reads it back', () => {
     const storage = new MemoryStorage();
     new SettingsStore(storage).set({ volume: 0.25, vibration: false, muted: true });
-    assert.deepEqual(new SettingsStore(storage).get(), { volume: 0.25, vibration: false, flashEffects: true, muted: true });
+    assert.deepEqual(new SettingsStore(storage).get(), { volume: 0.25, vibration: false, flashEffects: true, muted: true, devMode: false });
     assert.ok(storage.getItem(SETTINGS_KEY));
 });
 
@@ -57,4 +57,12 @@ test('effectiveVolume is zero when muted', () => {
     assert.equal(store.effectiveVolume, 0.6);
     store.set({ muted: true });
     assert.equal(store.effectiveVolume, 0);
+});
+
+test('devMode defaults off, persists, and ignores non-boolean values', () => {
+    const storage = new MemoryStorage();
+    assert.equal(new SettingsStore(storage).get().devMode, false);
+    new SettingsStore(storage).set({ devMode: true });
+    assert.equal(new SettingsStore(storage).get().devMode, true);
+    assert.equal(normalizeSettings({ devMode: 'yes' }).devMode, false);
 });

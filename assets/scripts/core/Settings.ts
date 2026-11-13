@@ -11,6 +11,8 @@ export interface SettingsData {
     /** Lightning / crisis flashes. */
     flashEffects: boolean;
     muted: boolean;
+    /** Developer mode from the 「金手指」 code RUNGM: every non-spire level is selectable. */
+    devMode: boolean;
 }
 
 /** The subset of the Web Storage API this module uses. */
@@ -26,6 +28,7 @@ export const DEFAULT_SETTINGS: Readonly<SettingsData> = Object.freeze({
     vibration: true,
     flashEffects: true,
     muted: false,
+    devMode: false,
 });
 
 function clamp01(v: number): number {
@@ -41,6 +44,7 @@ export function normalizeSettings(raw: unknown): SettingsData {
     if (typeof r.vibration === 'boolean') out.vibration = r.vibration;
     if (typeof r.flashEffects === 'boolean') out.flashEffects = r.flashEffects;
     if (typeof r.muted === 'boolean') out.muted = r.muted;
+    if (typeof r.devMode === 'boolean') out.devMode = r.devMode;
     return out;
 }
 

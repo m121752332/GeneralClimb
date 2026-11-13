@@ -63,6 +63,7 @@ GeneralClimb/
 
 ## 主要元件（ADR-01、GDD）
 目前做出 Boot（分段載入畫面：遊戲設定、帳號、天氣系統、NPC、音效、場景渲染，全部完成才進 Home；失敗可重試）與 Home（主畫面：開始遊戲、選擇關卡、練習模式、設定、Google 登入、最佳紀錄；UI 由程式建立，見 `assets/scripts/ui/`），以下為規劃。
+金手指（設定頁）：`RUNGM` 開啟、`STOPGM` 關閉開發人員模式（`Settings.devMode` → `GameSession.devMode`），開啟時選關可選任一樓層關（尖塔 13–14 關仍鎖）；解析在 `core/CheatCodes.ts`、可選關卡規則在 `core/LevelAccess.ts`。
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService
 
