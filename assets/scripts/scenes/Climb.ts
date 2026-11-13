@@ -1,10 +1,12 @@
 import {
-    _decorator, Camera, Color, Component, EventKeyboard, EventMouse, EventTouch, Graphics,
+    _decorator, Camera, Color, Component, director, EventKeyboard, EventMouse, EventTouch, Graphics,
     input, Input, KeyCode, Label, Node, UITransform, Vec2, Vec3, view,
 } from 'cc';
 import type { LevelConfig } from '../config/LevelConfig';
 import { LevelLoader } from '../config/LevelLoader';
+import { effectiveSpeed, nextSpeed, speedText } from '../core/ClimbSpeed';
 import { GameSession } from '../core/GameSession';
+import { settings } from '../core/Settings';
 import { applyScreenFit } from '../core/ScreenFit';
 import {
     ClimbSim, Dir, FALL_TEXT, NO_DIR, dirFromKeys, dirFromStick, formatClimbTime, randomSeed,
@@ -32,6 +34,12 @@ const PLAYER_NAME = '霍將軍';
 const TRANSITION_SEC = 1.5;
 /** Overlay text sits above the climber so it never covers them. */
 const OVERLAY_Y = 230;
+const HOME_SCENE = 'Home';
+/** Exit button in the top band (left of pause), and the dev speed chip under the event icon. */
+const BTN = 68;
+const EXIT_W = 112;
+const SPEED_W = 96;
+const SPEED_TOP = 192;
 
 const C = {
     facade: hex('#1b2836'),
@@ -107,6 +115,11 @@ export class Climb extends Component {
     private riskLabel!: Label;
     private gmLabel!: Label;
     private overlayLabel!: Label;
+    private exitLabel!: Label;
+    private speedLabel!: Label;
+    /** Climb speed multiplier: x1 for players, the developer's pick in RUNGM mode. */
+    private speed = 1;
+    private leaving = false;
 
     private keys = { up: false, down: false, left: false, right: false, orbitL: false, orbitR: false };
     private stickId: number | null = null;
@@ -213,6 +226,8 @@ export class Climb extends Component {
         if (!this.cfg) return;
         this.nextSim = null;
         this.sim = new ClimbSim(this.cfg, this.startIndex, randomSeed());
+        this.speed = effectiveSpeed(GameSession.devMode === true, this.cfg.dev.climbSpeeds, settings().get().devSpeed);
+        this.sim.speed = this.speed;
         console.log(`[Climb] level ${this.sim.level.id} seed ${this.sim.seed}`);
         this.tumble = 0;
         this.tower!.setLevel(this.sim);
@@ -334,7 +349,7 @@ export class Climb extends Component {
     private togglePause(): void {
         if (this.mode === 'play') {
             this.mode = 'paused';
-            this.showOverlay('暫停中\n\nEsc 或點擊繼續');
+            this.showOverlay('暫停中\n\nEsc 或點擊繼續\n右上「退出」回主畫面');
         } else if (this.mode === 'paused') {
             this.mode = 'play';
             this.hideOverlay();
@@ -367,6 +382,8 @@ export class Climb extends Component {
     private onKeyDown(e: EventKeyboard): void {
         if (this.setKey(e.keyCode, true)) return;
         if (e.keyCode === KeyCode.ESCAPE) this.togglePause();
+        else if (e.keyCode === KeyCode.KEY_X && this.canExit()) this.exitToHome();
+        else if (e.keyCode === KeyCode.KEY_V && this.canChangeSpeed()) this.cycleSpeed();
         else if (e.keyCode === KeyCode.SPACE || e.keyCode === KeyCode.ENTER) this.confirm();
     }
 
@@ -381,6 +398,14 @@ export class Climb extends Component {
         this.lastTapMs = now;
         if (this.inPauseButton(local) && (this.mode === 'play' || this.mode === 'paused')) {
             this.togglePause();
+            return;
+        }
+        if (this.canExit() && this.inExitButton(local)) {
+            this.exitToHome();
+            return;
+        }
+        if (this.canChangeSpeed() && this.inSpeedButton(local)) {
+            this.cycleSpeed();
             return;
         }
         this.confirm();
@@ -429,12 +454,14 @@ export class Climb extends Component {
         this.lastTouchMs = Date.now();
         const local = this.toLocal(e.getUILocation());
         const playing = this.mode === 'play' || this.mode === 'ready';
-        if (playing && this.orbitId === null && this.inOrbitArea(local)) {
+        const onButton = this.inPauseButton(local) || (this.canExit() && this.inExitButton(local))
+            || (this.canChangeSpeed() && this.inSpeedButton(local));
+        if (playing && !onButton && this.orbitId === null && this.inOrbitArea(local)) {
             this.orbitId = e.getID();
             this.orbitLastX = e.getUILocation().x;
             return;
         }
-        if (!playing || this.inPauseButton(local)) {
+        if (!playing || onButton) {
             this.tap(local);
             return;
         }
@@ -474,6 +501,56 @@ export class Climb extends Component {
     private inPauseButton(local: Vec3): boolean {
         const vs = view.getVisibleSize();
         return local.x > vs.width / 2 - 110 && local.y > vs.height / 2 - 110;
+    }
+
+    /** Left edge of the exit button, measured from the right side of the screen. */
+    private static readonly EXIT_X = 92 + 14 + EXIT_W;
+
+    private inExitButton(local: Vec3): boolean {
+        const vs = view.getVisibleSize();
+        const x0 = vs.width / 2 - Climb.EXIT_X;
+        const top = vs.height / 2;
+        return local.x > x0 - 8 && local.x < x0 + EXIT_W + 8 && local.y > top - 100 && local.y < top - 16;
+    }
+
+    private inSpeedButton(local: Vec3): boolean {
+        const vs = view.getVisibleSize();
+        const x0 = -vs.width / 2 + 24;
+        const y1 = vs.height / 2 - SPEED_TOP;
+        return local.x > x0 - 8 && local.x < x0 + SPEED_W + 8 && local.y > y1 - BTN - 8 && local.y < y1 + 8;
+    }
+
+    /**
+     * Quitting is offered at a level's starting point (row 0, before or after climbing back
+     * down to it), while paused, and on the fall / result screens. Mid-wall it is not, so a
+     * tap on the climb never ends the run by accident.
+     */
+    private canExit(): boolean {
+        const sim = this.sim;
+        if (!sim || this.leaving) return false;
+        if (this.mode === 'paused' || this.mode === 'fallen' || this.mode === 'cleared') return true;
+        return (this.mode === 'ready' || this.mode === 'play') && sim.row === 0;
+    }
+
+    private canChangeSpeed(): boolean {
+        return GameSession.devMode === true && this.sim !== null && this.mode !== 'ending' && this.mode !== 'loading';
+    }
+
+    private cycleSpeed(): void {
+        const speeds = this.cfg!.dev.climbSpeeds;
+        this.speed = nextSpeed(speeds, this.speed);
+        if (this.sim) this.sim.speed = this.speed;
+        if (this.nextSim) this.nextSim.speed = this.speed;
+        settings().set({ devSpeed: this.speed });
+        console.log(`[Climb] speed ${speedText(this.speed)}`);
+    }
+
+    /** Back to the home screen; the run is abandoned (nothing is recorded). */
+    private exitToHome(): void {
+        if (this.leaving) return;
+        this.leaving = true;
+        console.log('[Climb] exit to home');
+        director.loadScene(HOME_SCENE);
     }
 
     // ------------------------------------------------------------ nodes
@@ -521,6 +598,10 @@ export class Climb extends Component {
         gm.node.active = GameSession.devMode === true;
         this.gmLabel = gm;
         this.overlayLabel = this.makeLabel('Overlay', hud, 36);
+        this.exitLabel = this.makeLabel('Exit', hud, 28);
+        this.exitLabel.string = '退出';
+        this.speedLabel = this.makeLabel('Speed', hud, 28);
+        this.speedLabel.color = hex('#ffd34a');
     }
 
     private showOverlay(text: string): void {
@@ -681,6 +762,32 @@ export class Climb extends Component {
         h.rect(right - 72, top - 76, 10, 36);
         h.rect(right - 54, top - 76, 10, 36);
         h.fill();
+
+        // Exit (at a level's start, paused, or on a result screen) and the dev speed chip.
+        const showExit = this.canExit();
+        this.exitLabel.node.active = showExit;
+        if (showExit) {
+            const x0 = right - Climb.EXIT_X;
+            h.fillColor = new Color(178, 60, 60, 220);
+            h.roundRect(x0, top - 92, EXIT_W, BTN, 10);
+            h.fill();
+            this.exitLabel.node.setPosition(x0 + EXIT_W / 2, top - 58);
+        }
+        const showSpeed = this.canChangeSpeed();
+        this.speedLabel.node.active = showSpeed;
+        if (showSpeed) {
+            const x0 = left + 24;
+            const y0 = top - SPEED_TOP - BTN;
+            h.fillColor = new Color(0, 0, 0, 160);
+            h.roundRect(x0, y0, SPEED_W, BTN, 10);
+            h.fill();
+            h.strokeColor = hex('#ffd34a');
+            h.lineWidth = 2;
+            h.roundRect(x0, y0, SPEED_W, BTN, 10);
+            h.stroke();
+            this.speedLabel.string = speedText(this.speed);
+            this.speedLabel.node.setPosition(x0 + SPEED_W / 2, y0 + BTN / 2);
+        }
 
         // Risk meter (left, vertical).
         const mx = left + 30;
