@@ -49,6 +49,7 @@ export class Home extends Component {
         }).catch((err: unknown) => {
             console.error(err);
             this.version.string = 'levels.json 載入失敗';
+            this.version.node.active = true;
         });
     }
 
@@ -187,11 +188,15 @@ export class Home extends Component {
         this.version.node.setPosition(160, 0);
     }
 
-    /** Settings.devMode is the source of truth; mirror it into GameSession and the GM badge. */
+    /**
+     * Settings.devMode is the source of truth; mirror it into GameSession, the GM badge and the
+     * levels.json version tag (a debug hint, so players only see it if loading failed).
+     */
     private syncDevMode(): void {
         const on = settings().get().devMode;
         GameSession.devMode = on;
         if (this.gmBadge) this.gmBadge.active = on;
+        if (this.version && !this.version.string.includes('失敗')) this.version.node.active = on;
     }
 
     private startGame(levelIndex = 0): void {
