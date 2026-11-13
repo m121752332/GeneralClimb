@@ -28,17 +28,19 @@ GeneralClimb/
 ├─ README.md
 ├─ docs/            ADR.md、GDD.md、flowchart.html
 ├─ config/          levels.json（種子副本）、firestore.rules、firestore.indexes.json
-├─ package.json     Cocos 專案資訊 + npm scripts（test / sync:levels / build:web / publish:site / serve）
+├─ package.json     Cocos 專案資訊 + npm scripts（test / sync:levels / build:web / publish:site / serve / smoke）
 ├─ assets/          Cocos 專案內容
 │  ├─ scenes/       Boot.scene（目前唯一場景，建置的起始場景）
 │  ├─ scripts/      config/（LevelConfig 驗證、LevelLoader）、core/（ScreenFit）、scenes/（Boot）
 │  └─ resources/config/levels.json   遊戲實際載入的數值檔
 ├─ settings/        Cocos 專案設定（設計解析度、功能裁剪）
 ├─ tests/           node --test 單元測試（只測不依賴 cc 的純 TS）
-├─ tools/           build-web.mjs、publish-site.mjs、serve.mjs、sync-levels.mjs、build-web-mobile.json
+├─ tools/           build-web.mjs、publish-site.mjs、site-icons.mjs、serve.mjs、smoke-site.mjs、sync-levels.mjs、build-web-mobile.json
 ├─ site/            Web Mobile 建置輸出，push 後由 Actions 發布到 Pages
+├─ build-templates/web-mobile/  favicon、apple-touch-icon（Cocos 建置時複製到輸出根目錄）
+├─ branding/        原始 Logo（gcr-icon.png）
 ├─ .claude/launch.json  本機預覽設定（serve build/web-mobile，port 8101）
-└─ .github/workflows/deploy-pages.yml
+└─ .github/workflows/  deploy-pages.yml（master 發布）、pr-check.yml（PR 檢查）
 ```
 `library/`、`temp/`、`local/`、`build/` 是 Cocos 編輯器／建置產生的，已在 `.gitignore`，不要 commit。
 
@@ -73,11 +75,13 @@ Components：InputController、RiskSystem、EventScheduler、WeatherSystem、Eag
 - `npm run sync:levels`：用 `config/levels.json` 覆蓋 `assets/resources/config/levels.json`。
 - `npm run build:web`：用 Cocos Creator CLI 依 `tools/build-web-mobile.json` 建置到 `build/web-mobile`（直式、md5Cache）。**先關閉這個專案的編輯器**。編輯器路徑預設 `C:/ProgramData/cocos/editors/Creator/3.8.8/CocosCreator.exe`，可用環境變數 `COCOS_CREATOR` 覆蓋；CLI 成功的結束碼是 36，失敗看 `temp/builder/log`。
 - `npm run serve`：本機預覽 `build/web-mobile`，http://localhost:8101（`node tools/serve.mjs site` 可改看 `site/`）。
-- `npm run publish:site`：清空 `site/` 後複製 `build/web-mobile`（略過 `.runtime-bridge`）。
+- `npm run publish:site`：清空 `site/` 後複製 `build/web-mobile`（略過 `.runtime-bridge`），補齊網站圖示並在 `index.html` 插入 `<link>`（`tools/site-icons.mjs`）。
+- `npm run smoke`：用無頭 Chromium 開 `site/`，確認 Boot 場景載入 levels.json（需先 `npm i --no-save playwright` 並 `npx playwright install chromium`）。
 
 ## 部署（GitHub Pages）
 - 預設分支是 **`master`**。Pages Source 設為 GitHub Actions。
 - `.github/workflows/deploy-pages.yml`：push 到 `master` 且有改到 `site/**` 或 workflow 本身才會發布；也可手動 `workflow_dispatch`。Actions 只上傳 `site/`，不在雲端建置。
+- PR 到 master 會跑 `.github/workflows/pr-check.yml`（`npm test` + `npm run smoke`），驗證的是已提交的 `site/`。
 - 發布流程：`npm test` → `npm run build:web` → `npm run serve` 本機確認 → `npm run publish:site` → commit `site/` → push `master`。
 - 只改程式沒重建 `site/` 時，線上版本不會變。
 
