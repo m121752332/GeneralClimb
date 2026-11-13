@@ -189,7 +189,7 @@ function faceZ(x: number, y: number): number {
 }
 
 /** Robe radius at height y (front-to-back squashed by TORSO_SZ), matching the torso lathe. */
-const ROBE: readonly [number, number][] = [[0.46, 0.29], [0.52, 0.285], [0.73, 0.24], [0.83, 0.24], [1.02, 0.27], [1.14, 0.285], [1.25, 0.2], [1.29, 0.1]];
+const ROBE: readonly [number, number][] = [[0.46, 0.29], [0.52, 0.285], [0.73, 0.24], [0.83, 0.24], [1.02, 0.275], [1.16, 0.3], [1.27, 0.21], [1.3, 0.1]];
 function robeR(y: number): number {
     for (let i = 1; i < ROBE.length; i++) {
         const [y0, r0] = ROBE[i - 1];
@@ -227,11 +227,13 @@ function buildTorso(): ClimberPart {
         [0.29, 0.46, 0.285, 0.52, C.gold],
         [0.285, 0.52, 0.24, 0.73, C.robe],
         [0.25, 0.73, 0.25, 0.83, C.gold],
-        [0.24, 0.83, 0.27, 1.02, C.robe],
-        [0.27, 1.02, 0.285, 1.14, C.robe],
-        [0.285, 1.14, 0.2, 1.25, C.robe],
-        [0.2, 1.25, 0.1, 1.29, C.gold],
+        [0.24, 0.83, 0.275, 1.02, C.robe],
+        [0.275, 1.02, 0.3, 1.16, C.robe],
+        [0.3, 1.16, 0.21, 1.27, C.robe],
+        [0.21, 1.27, 0.1, 1.3, C.gold],
     ], 14, TORSO_SZ, { bottom: C.pants });
+    // Shoulders: round caps the upper arms turn in, so no gap opens at any arm angle.
+    for (const sx of [-1, 1]) b.ellipsoid([sx * 0.29, 1.17, 0], [0.11, 0.1, 0.105], C.robe, 8, 6);
     // Neck.
     b.lathe(0, 0, [[0.085, 1.26, 0.085, 1.38, C.skin]], 8);
 
@@ -305,6 +307,9 @@ function buildCape(): ClimberPart {
     return b.part('Cape', [0, 1.21, 0.14]);
 }
 
+/** Shoulder pivot distance from the body's centre line. */
+export const SHOULDER_X = 0.33;
+
 /** Elbow and knee, measured from the shoulder / hip along the limb. */
 export const ELBOW = 0.3;
 export const KNEE = 0.3;
@@ -323,7 +328,7 @@ function buildArm(name: 'ArmL' | 'ArmR', x: number): ClimberPart[] {
     ], 8);
     fore.ellipsoid([0, 0.585 - ELBOW, 0], [0.068, 0.082, 0.062], C.skin, 8, 6);
     const lower = name === 'ArmL' ? 'ForearmL' : 'ForearmR';
-    return [up.part(name, [x, 1.2, 0]), fore.part(lower, [0, ELBOW, 0], name)];
+    return [up.part(name, [x, 1.19, 0]), fore.part(lower, [0, ELBOW, 0], name)];
 }
 
 /** Thigh, modelled hanging down (-Y) from the hip pivot; the shin and boot hang off the knee. */
@@ -349,8 +354,8 @@ export function climberParts(): ClimberPart[] {
     return [
         buildTorso(),
         buildCape(),
-        ...buildArm('ArmL', -0.36),
-        ...buildArm('ArmR', 0.36),
+        ...buildArm('ArmL', SHOULDER_X * -1),
+        ...buildArm('ArmR', SHOULDER_X),
         ...buildLeg('LegL', -0.15),
         ...buildLeg('LegR', 0.15),
     ];

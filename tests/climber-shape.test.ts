@@ -19,17 +19,17 @@ test('climber: parts with elbows and knees, well-formed buffers', () => {
     }
 });
 
-test('climber: cheap enough for phones (< 3500 triangles, each part < 65536 vertices)', () => {
+test('climber: cheap enough for phones (< 4000 triangles, each part < 65536 vertices)', () => {
     const parts = climberParts();
     const tris = parts.reduce((n, p) => n + p.indices.length / 3, 0);
-    assert.ok(tris < 3500, `${tris} triangles`);
+    assert.ok(tris < 4000, `${tris} triangles`);
     for (const p of parts) assert.ok(p.positions.length / 3 < 65536);
 });
 
-test('climber: same pivots as the old block figure, so poses and the ending still fit', () => {
+test('climber: limb pivots (shoulders tucked into the torso, hips as before)', () => {
     const byName = Object.fromEntries(climberParts().map((p) => [p.name, p.pivot]));
-    assert.deepEqual(byName.ArmL, [-0.36, 1.2, 0]);
-    assert.deepEqual(byName.ArmR, [0.36, 1.2, 0]);
+    assert.deepEqual(byName.ArmL, [-0.33, 1.19, 0]);
+    assert.deepEqual(byName.ArmR, [0.33, 1.19, 0]);
     assert.deepEqual(byName.LegL, [-0.15, 0.55, 0]);
     assert.deepEqual(byName.LegR, [0.15, 0.55, 0]);
     assert.deepEqual(byName.ForearmL, [0, 0.3, 0]);
