@@ -33,6 +33,8 @@ const DRAG_ORBIT = 0.008;
 /** After the player lets go of the view, wait this long, then swing back to the climber. */
 const RETURN_DELAY_SEC = 1.5;
 const RETURN_RATE = 3;
+/** Nearest city block distance from the tower axis; the orbit radius is at most ~33. */
+const CITY_MIN = 60;
 
 const COL = {
     glass: hex('#3f8f98'),
@@ -332,11 +334,6 @@ export class Tower3D {
             this.disc(mb, dh + 0.08, dy, yaw, 1.9, COL.disc);
             this.disc(mb, dh + 0.14, dy, yaw, 1.2, COL.discInner);
         }
-        // Entrances on the plaza side of each face.
-        for (let f = 0; f < faces; f++) {
-            const p = surfacePoint(f + 0.5, S[0].half0, 1, faces, 0.3);
-            mb.box(p.x, 1.6, p.z, f % 2 ? 0.6 : 3.2, 3.2, f % 2 ? 3.2 : 0.6, COL.ledge);
-        }
 
         // Crown and spire above 101F.
         const roof = roofY(rpf);
@@ -346,7 +343,8 @@ export class Tower3D {
         mb.prism(8, roof + 6, roof + 14, 1.1, 0.8, COL.spire);
         mb.prism(8, roof + 14, roof + 34, 0.55, 0.12, COL.spire);
 
-        // City blocks round the plaza (fixed layout, so every run looks the same).
+        // City blocks round the plaza (fixed layout, so every run looks the same). They start
+        // well outside the camera's orbit (CITY_MIN) so the camera never ends up inside one.
         let seed = 101;
         const rnd = (): number => {
             seed = (seed * 16807) % 2147483647;
@@ -355,8 +353,8 @@ export class Tower3D {
         const tones = [hex('#c9c3b8'), hex('#a9b3b8'), hex('#d8cfc0'), hex('#8f9ca3'), hex('#b7c4c9'), hex('#9aa89a')];
         for (let i = 0; i < 260; i++) {
             const a = rnd() * Math.PI * 2;
-            const r = 26 + Math.pow(rnd(), 0.7) * 320;
-            const near = r < 80;
+            const r = CITY_MIN + Math.pow(rnd(), 0.7) * 300;
+            const near = r < CITY_MIN + 40;
             const w = 6 + rnd() * 14;
             const d = 6 + rnd() * 14;
             const h = near ? 4 + rnd() * 18 : 6 + rnd() * rnd() * 60;
