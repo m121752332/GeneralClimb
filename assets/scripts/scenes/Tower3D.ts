@@ -691,7 +691,8 @@ export class Tower3D {
         };
         const p = this.tmp2.set(0, top, seat);
         // Over the right shoulder (seen from behind), looking down and out over the city.
-        const shoulder = { x: 0.9, y: top + 2.0, z: 0.2 };
+        // Far enough back and up that the (scaled) climber sits in the lower corner of the frame.
+        const shoulder = { x: 2.3, y: top + 4.0, z: -0.5 };
         const down = { x: -0.3, y: top - 30, z: seat + 25 };
         const u = smooth((t - 3.5) / (ENDING_SEC - 3.5));
         const phi0 = Math.atan2(shoulder.x, shoulder.z);
