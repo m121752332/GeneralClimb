@@ -30,8 +30,8 @@ GeneralClimb/
 ├─ config/          levels.json（種子副本）、firestore.rules、firestore.indexes.json
 ├─ package.json     Cocos 專案資訊 + npm scripts（test / sync:levels / build:web / publish:site / serve / smoke）
 ├─ assets/          Cocos 專案內容
-│  ├─ scenes/       Boot.scene（目前唯一場景，建置的起始場景）
-│  ├─ scripts/      config/（LevelConfig 驗證、LevelLoader）、core/（ScreenFit）、scenes/（Boot）
+│  ├─ scenes/       Boot.scene（建置的起始場景）→ Home.scene（主畫面）
+│  ├─ scripts/      config/（LevelConfig 驗證、LevelLoader）、core/（ScreenFit、GameSession、Settings、LocalBest、BootStages）、scenes/（Boot、Home、HomeBackdrop）、ui/（UiKit、Toast、面板）
 │  └─ resources/config/levels.json   遊戲實際載入的數值檔
 ├─ settings/        Cocos 專案設定（設計解析度、功能裁剪）
 ├─ tests/           node --test 單元測試（只測不依賴 cc 的純 TS）
@@ -62,7 +62,8 @@ GeneralClimb/
 - 驗證邏輯在 `assets/scripts/config/LevelConfig.ts`（純 TS，不依賴 cc），`LevelLoader` 從 `resources/config/levels` 載入後交給它驗證。改結構時同步改 `tests/level-config.test.ts`。
 
 ## 主要元件（ADR-01、GDD）
-目前只做出 Boot 場景（套用 ScreenFit、載入並顯示 levels.json 驗證結果），以下為規劃。
+目前做出 Boot（分段載入畫面：遊戲設定、帳號、天氣系統、NPC、音效、場景渲染，全部完成才進 Home；失敗可重試）與 Home（主畫面：開始遊戲、選擇關卡、練習模式、設定、Google 登入、最佳紀錄；UI 由程式建立，見 `assets/scripts/ui/`），以下為規劃。
+金手指（設定頁）：`RUNGM` 開啟、`STOPGM` 關閉開發人員模式（`Settings.devMode` → `GameSession.devMode`），開啟時選關可選任一樓層關（尖塔 13–14 關仍鎖）；解析在 `core/CheatCodes.ts`、可選關卡規則在 `core/LevelAccess.ts`。
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService
 

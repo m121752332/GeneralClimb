@@ -12,6 +12,10 @@
       "uuid": "53a643ad-afac-4803-8a56-84c8481578e4"
     },
     {
+      "url": "db://assets/scenes/Home.scene",
+      "uuid": "1c204684-d7b3-453d-94f3-d134b2db4b0c"
+    },
+    {
       "url": "db://assets/scenes/Climb.scene",
       "uuid": "11ece750-d5f5-4221-8a1a-90c2606a5335"
     }

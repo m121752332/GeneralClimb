@@ -1,6 +1,6 @@
 // Smoke test for the committed Web Mobile build: serves site/ (or the folder given as the
-// first argument), opens it in headless Chromium and waits for the Boot scene to report
-// that levels.json loaded. Exits non-zero on page errors, failed requests or a timeout.
+// first argument), opens it in headless Chromium, waits for the Boot scene to report that
+// levels.json loaded, then for the Home menu. Exits non-zero on page errors, failed requests or a timeout.
 // Usage: node tools/smoke-site.mjs [folder]   (needs the playwright package and its Chromium)
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -30,16 +30,27 @@ try {
     page.on('response', (r) => { if (r.status() >= 400) problems.push(`HTTP ${r.status()}: ${r.url()}`); });
 
     await page.goto(`http://localhost:${port}/`);
-    // Boot.ts sets its status label to "... levels.json vN OK ..." on success, "... 載入失敗 ..." on failure.
+    // Boot.ts sets window.__GC_BOOT to the stage summary (containing "levels.json vN OK") once every
+    // stage is done, just before Home replaces the scene; on failure its labels show "... 載入失敗".
     const handle = await page.waitForFunction(() => {
+        if (globalThis.__GC_BOOT) return globalThis.__GC_BOOT;
         const scene = globalThis.cc?.director?.getScene();
         if (!scene || scene.name !== 'Boot') return null;
         const text = scene.getComponentsInChildren(globalThis.cc.Label).map((l) => l.string).join('\n');
-        return /OK|失敗/.test(text) ? text : null;
+        return /失敗/.test(text) ? text : null; // success is reported via __GC_BOOT once every stage is done
     }, null, { timeout: TIMEOUT_MS });
     const status = await handle.jsonValue();
     console.log(`Boot status:\n${status}`);
-    if (!/levels\.json v\d+ OK/.test(status)) problems.push('Boot scene did not load levels.json');
+    if (!/levels\.json v\d+ OK/.test(status)) throw new Error('Boot scene did not load levels.json');
+
+    // Boot then loads Home; wait until its menu is built.
+    const home = await page.waitForFunction(() => {
+        const scene = globalThis.cc?.director?.getScene();
+        if (globalThis.__GC_SCENE !== 'Home' || !scene || scene.name !== 'Home') return null;
+        const text = scene.getComponentsInChildren(globalThis.cc.Label).map((l) => l.string).join('|');
+        return /開始遊戲/.test(text) && /levels\.json v\d+/.test(text) ? text : null;
+    }, null, { timeout: TIMEOUT_MS });
+    console.log(`Home labels: ${await home.jsonValue()}`);
 } catch (e) {
     problems.push(e instanceof Error ? e.message : String(e));
 } finally {
