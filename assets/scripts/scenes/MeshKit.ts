@@ -49,6 +49,20 @@ export class MeshBuilder {
         this.indices.push(i, i + 1, i + 2, i, i + 2, i + 3);
     }
 
+    /** Quad a-b-c-d whose bottom edge (a, b) is `bottom` and top edge (c, d) is `top`. */
+    gradQuad(a: V3, b: V3, c: V3, d: V3, bottom: Color, top: Color, flat = false): void {
+        const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+        const vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const tone = (col: Color): number[] => (flat ? [col.r / 255, col.g / 255, col.b / 255, 1] : shade(col, nx, ny, nz));
+        const lo = tone(bottom), hi = tone(top);
+        const i = this.vert(a, lo);
+        this.vert(b, lo);
+        this.vert(c, hi);
+        this.vert(d, hi);
+        this.indices.push(i, i + 1, i + 2, i, i + 2, i + 3);
+    }
+
     /** Axis-aligned box (optionally turned about Y by `yaw` around its centre). */
     box(cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, color: Color, yaw = 0, top?: Color): void {
         const hx = sx / 2, hy = sy / 2, hz = sz / 2;

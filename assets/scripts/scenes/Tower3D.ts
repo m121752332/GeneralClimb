@@ -30,6 +30,10 @@ const HEAD = 2.0 * PLAYER_SCALE;
 export const ENDING_SEC = 10;
 /** Grid quads float just off the facade to avoid z-fighting. */
 const GRID_OUT = 0.04;
+/** Half width of a pillar between two panes, in columns. */
+const PILLAR_HALF = 0.06;
+/** Glass bays per face on the floors outside the current level. */
+const FACADE_BAYS = 8;
 /** Horizontal field of view, so a face fills the width on any phone. */
 const FOV = 42;
 /** Camera distance from the face: `half * DIST_K + DIST_C`. */
@@ -54,7 +58,12 @@ const CITY_MIN = 60;
 
 const COL = {
     glass: hex('#3f8f98'),
-    glassDark: hex('#2b6f78'),
+    // Floor-to-ceiling glass: darker at the floor, sky reflection towards the ceiling.
+    paneLow: hex('#1d5c62'),
+    paneHigh: hex('#4d9ea2'),
+    // Light grey metal frame: thick vertical pillars, thinner horizontal transoms.
+    pillar: hex('#d3dcda'),
+    frame: hex('#c3cdcb'),
     mullion: hex('#1f4f57'),
     ledge: hex('#cfd8d6'),
     disc: hex('#b9c6c4'),
@@ -64,11 +73,12 @@ const COL = {
     spire: hex('#d8dcdc'),
     plaza: hex('#b8b2a6'),
     mat: hex('#24474a'),
-    safe: hex('#6fd0e0'),
-    danger: hex('#e0605a'),
+    safe: hex('#2c8a90'),
+    safeHigh: hex('#86d6da'),
+    danger: hex('#a8443e'),
+    dangerHigh: hex('#ea8c82'),
     obstacle: hex('#5a5a5a'),
     obstacleTop: hex('#8a8a8a'),
-    slab: hex('#173a40'),
     goal: hex('#e8c66a'),
 };
 
@@ -78,14 +88,33 @@ function hex(s: string): Color {
 
 /** Corners of a face strip at heights y0..y1 between perimeter coordinates s0..s1. */
 function faceQuad(mb: MeshBuilder, sections: readonly Section[], cols: number, faces: number,
-    s0: number, s1: number, y0: number, y1: number, out: number, color: Color, flat = false): void {
+    s0: number, s1: number, y0: number, y1: number, out: number, color: Color, flat = false, top?: Color): void {
     const h0 = halfAt(sections, y0 + 1e-4);
     const h1 = halfAt(sections, y1 - 1e-4);
     const a = surfacePoint(s0, h0, cols, faces, out);
     const b = surfacePoint(s1, h0, cols, faces, out);
     const c = surfacePoint(s1, h1, cols, faces, out);
     const d = surfacePoint(s0, h1, cols, faces, out);
-    mb.quad([a.x, y0, a.z], [b.x, y0, b.z], [c.x, y1, c.z], [d.x, y1, d.z], color, flat);
+    if (top) mb.gradQuad([a.x, y0, a.z], [b.x, y0, b.z], [c.x, y1, c.z], [d.x, y1, d.z], color, top, flat);
+    else mb.quad([a.x, y0, a.z], [b.x, y0, b.z], [c.x, y1, c.z], [d.x, y1, d.z], color, flat);
+}
+
+/**
+ * A pillar standing out of the glass: front face plus both sides (shaded by their own normals,
+ * so it reads as a 3D frame). At a corner the front cuts across, which makes a chamfered corner post.
+ */
+function facePillar(mb: MeshBuilder, sections: readonly Section[], cols: number, faces: number,
+    s: number, hw: number, y0: number, y1: number, back: number, front: number, color: Color): void {
+    faceQuad(mb, sections, cols, faces, s - hw, s + hw, y0, y1, front, color);
+    const h0 = halfAt(sections, y0 + 1e-4);
+    const h1 = halfAt(sections, y1 - 1e-4);
+    for (const [sa, flip] of [[s - hw, false], [s + hw, true]] as const) {
+        const bb = surfacePoint(sa, h0, cols, faces, back), bf = surfacePoint(sa, h0, cols, faces, front);
+        const tb = surfacePoint(sa, h1, cols, faces, back), tf = surfacePoint(sa, h1, cols, faces, front);
+        const a: V3 = [bb.x, y0, bb.z], b: V3 = [bf.x, y0, bf.z], c: V3 = [tf.x, y1, tf.z], d: V3 = [tb.x, y1, tb.z];
+        if (flip) mb.quad(b, a, d, c, color);
+        else mb.quad(a, b, c, d, color);
+    }
 }
 
 /** Loads the shared vertex-colour unlit material (resources/materials/vertex-color.mtl). */
@@ -251,18 +280,21 @@ export class Tower3D {
 
         for (let i = 0; i < S.length; i++) {
             const sec = S[i];
-            // Facade: four trapezoids (one cell = one face here, cols = 1).
-            for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, sec.y0, sec.y1, 0, i % 2 ? COL.glass : COL.glassDark);
-            // Floor lines on the glass.
-            for (let fl = sec.floorFrom + 1; fl <= sec.floorTo; fl++) {
-                const y = rowY((fl - 1) * rpf);
-                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y - 0.06, y + 0.06, 0.015, COL.mullion);
+            // Facade: floor-to-ceiling glass, one pane per floor and face (one cell = one face
+            // here, cols = 1), with a spandrel band at every floor line.
+            for (let fl = sec.floorFrom; fl <= sec.floorTo; fl++) {
+                const y0 = fl === sec.floorFrom ? sec.y0 : rowY((fl - 1) * rpf);
+                const y1 = fl === sec.floorTo ? sec.y1 : rowY(fl * rpf);
+                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y0, y1, 0, COL.paneLow, false, COL.paneHigh);
+                if (fl === sec.floorFrom) continue;
+                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y0 - 0.08, y0 + 0.08, 0.04, COL.frame);
             }
-            // Vertical mullions: a few per face.
+            // Pillars between the glass bays (about 1/8 of a bay wide), wider at the corners.
             for (let f = 0; f < faces; f++) {
-                for (let k = 1; k < 6; k++) {
-                    const s = f + k / 6;
-                    faceQuad(mb, S, 1, faces, s - 0.004, s + 0.004, sec.y0, sec.y1, 0.015, COL.mullion);
+                for (let k = 0; k < FACADE_BAYS; k++) {
+                    const s = f + k / FACADE_BAYS;
+                    const hw = (k === 0 ? 2 : 1) * 0.5 / FACADE_BAYS / 8;
+                    facePillar(mb, S, 1, faces, s, hw, sec.y0, sec.y1, 0, 0.1, COL.pillar);
                 }
             }
             // Ledge on top: from this section's top edge in to the next one's bottom edge.
@@ -377,33 +409,39 @@ export class Tower3D {
             this.gridMesh = mesh;
             return;
         }
-        const inset = 0.08;
-        // One glass strip per column, split where the zone changes (pagoda flare) or an
-        // obstacle sits; rows are thin (ROW_H), so per-cell quads would read as noise.
+        const inset = PILLAR_HALF;
+        // Floor-to-ceiling glass: one pane per column and floor, tinted by zone (light blue
+        // safe, red danger), also split where the zone changes (pagoda flare) or a vent sits.
+        // Rows are thin (ROW_H), so per-cell quads would read as noise.
         for (let c = 0; c < wall.ring; c++) {
             let start = 0;
             for (let r = 1; r <= wall.rows; r++) {
                 const prevZone = zoneOf(wall, c, r - 1);
-                const brk = r === wall.rows || isObstacle(wall, c, r) || isObstacle(wall, c, r - 1)
+                const brk = r === wall.rows || r % this.rowsPerFloor === 0 || isObstacle(wall, c, r) || isObstacle(wall, c, r - 1)
                     || zoneOf(wall, c, r) !== prevZone;
                 if (!brk) continue;
                 if (!isObstacle(wall, c, r - 1)) {
-                    const color = prevZone === 'safe' ? COL.safe : COL.danger;
-                    faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset, ry(start), ry(r), GRID_OUT, color, true);
+                    const safe = prevZone === 'safe';
+                    // Gradient over the whole floor, so a pane split mid-floor still reads as one.
+                    const f0 = Math.floor(start / this.rowsPerFloor) * this.rowsPerFloor;
+                    const lo = Color.lerp(new Color(), safe ? COL.safe : COL.danger, safe ? COL.safeHigh : COL.dangerHigh, (start - f0) / this.rowsPerFloor);
+                    const hi = Color.lerp(new Color(), safe ? COL.safe : COL.danger, safe ? COL.safeHigh : COL.dangerHigh, (r - f0) / this.rowsPerFloor);
+                    faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset, ry(start), ry(r), GRID_OUT, lo, true, hi);
                 }
                 start = r;
             }
         }
-        // Half-floor lines so the climb still shows progress between slabs.
-        for (let r = this.rowsPerFloor / 2; r < wall.rows; r += this.rowsPerFloor) {
-            const y = ry(r);
-            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - 0.025, y + 0.025, GRID_OUT + 0.01, COL.mullion, true);
-        }
-        // Floor slabs inside this level, and the goal band at the top.
+        // Horizontal transoms at every floor line (half a pillar thick), the goal band at the top.
         for (let r = this.rowsPerFloor; r <= wall.rows; r += this.rowsPerFloor) {
             const y = ry(r);
             const top = r === wall.rows;
-            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - (top ? 0.1 : 0.05), y + (top ? 0.1 : 0.05), GRID_OUT + 0.01, top ? COL.goal : COL.slab, true);
+            const t = top ? 0.12 : 0.07;
+            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - t, y + t, GRID_OUT + 0.04, top ? COL.goal : COL.frame);
+        }
+        // Pillars between the panes, standing out of the glass; the corner posts are wider.
+        for (let c = 0; c < wall.ring; c++) {
+            const corner = wall.faces > 1 && c % wall.cols === 0;
+            facePillar(mb, S, wall.cols, wall.faces, c, corner ? PILLAR_HALF * 2 : PILLAR_HALF, ry(0), ry(wall.rows), GRID_OUT, GRID_OUT + 0.14, COL.pillar);
         }
         // Obstacles: vents sticking out of the glass.
         for (const key of wall.obstacles) {

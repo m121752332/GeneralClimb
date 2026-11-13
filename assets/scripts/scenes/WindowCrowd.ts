@@ -39,9 +39,18 @@ const SHIRT: Record<NpcKind, Color[]> = {
     staff: ['#2f3a5a', '#3a3a3a', '#41505a', '#2b3f3a'].map(hex),
     tourist: ['#f2c94c', '#56ccf2', '#eb5757', '#6fcf97'].map(hex),
 };
+/** Seen through tinted glass: every colour is pulled this far towards the glass. */
+const GLASS_TINT = hex('#3f8f98');
+const TINT = 0.18;
+
+function tinted(c: Color): Color {
+    return Color.lerp(new Color(), c, GLASS_TINT, TINT);
+}
+
 const C = {
-    window: hex('#f3e6c4'),
-    frame: hex('#24474a'),
+    room: hex('#6fb4b2'),
+    ceiling: hex('#9fd2cc'),
+    lamp: hex('#fff2c8'),
     pants: hex('#3a3f5c'),
     collar: hex('#f4f4f2'),
     tie: hex('#c0392b'),
@@ -50,6 +59,7 @@ const C = {
     hat: hex('#f4f0e2'),
     hatBand: hex('#e0605a'),
     phone: hex('#222428'),
+    screen: hex('#bfe8ff'),
     flash: hex('#ffffff'),
 };
 
@@ -119,7 +129,8 @@ export class WindowCrowd {
             const rect = (u0: number, v0: number, u1: number, v1: number, w: number, color: Color): void =>
                 mb.quad(P(u0, v0, w), P(u1, v0, w), P(u1, v1, w), P(u0, v1, w), color, true);
             const colW = (2 * halfAt(this.sections, yb + floorH / 2)) / wall.cols;
-            const half = Math.min(colW * 0.4, 0.7);
+            // The pane between two pillars (PILLAR_HALF = 0.06 of a column on each side).
+            const half = colW * 0.43;
             this.bakeFigure(rect, P, mb, spot, half, floorH);
             this.actors.push(this.makeActor(spot, P(0, SHOULDER_V, OUT_ARM), center.yaw));
         }
@@ -130,12 +141,13 @@ export class WindowCrowd {
         rect: (u0: number, v0: number, u1: number, v1: number, w: number, c: Color) => void,
         P: (u: number, v: number, w: number) => V3, mb: MeshBuilder, spot: NpcSpot, half: number, floorH: number,
     ): void {
-        const top = Math.min(floorH - 0.2, 2.2);
-        // Lit window with a dark frame.
-        rect(-half - 0.06, 0.14, half + 0.06, top + 0.06, OUT_WINDOW - 0.005, C.frame);
-        rect(-half, 0.2, half, top, OUT_WINDOW, C.window);
-        const skin = SKIN[spot.palette % SKIN.length];
-        const shirt = SHIRT[spot.kind][spot.palette % 4];
+        const top = floorH - 0.08;
+        // A lit room behind the floor-to-ceiling glass: back wall, ceiling band, two downlights.
+        rect(-half, 0.08, half, top, OUT_WINDOW, tinted(C.room));
+        rect(-half, top - 0.22, half, top, OUT_WINDOW + 0.004, tinted(C.ceiling));
+        for (const u of [-half * 0.5, half * 0.5]) rect(u - 0.1, top - 0.16, u + 0.1, top - 0.1, OUT_WINDOW + 0.008, C.lamp);
+        const skin = tinted(SKIN[spot.palette % SKIN.length]);
+        const shirt = tinted(SHIRT[spot.kind][spot.palette % 4]);
         // Legs, torso.
         rect(-0.16, 0.25, -0.04, 0.95, OUT_BODY, C.pants);
         rect(0.04, 0.25, 0.16, 0.95, OUT_BODY, C.pants);
@@ -170,8 +182,8 @@ export class WindowCrowd {
         this.node!.addChild(root);
         root.setPosition(at[0], at[1], at[2]);
         root.setRotationFromEuler(0, (yaw * 180) / Math.PI, 0);
-        const skin = SKIN[spot.palette % SKIN.length];
-        const shirt = SHIRT[spot.kind][spot.palette % 4];
+        const skin = tinted(SKIN[spot.palette % SKIN.length]);
+        const shirt = tinted(SHIRT[spot.kind][spot.palette % 4]);
         const arm = (side: number): Node => {
             const n = new Node(side > 0 ? 'ArmR' : 'ArmL');
             n.layer = Layers.Enum.DEFAULT;
@@ -182,7 +194,11 @@ export class WindowCrowd {
                 mb.quad([x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z], c, true);
             r(-0.06, -ARM_LEN, 0.06, 0.04, 0, shirt);
             r(-0.055, -ARM_LEN - 0.1, 0.055, -ARM_LEN, 0, skin);
-            if (side > 0 && spot.kind === 'tourist') r(-0.09, -ARM_LEN - 0.2, 0.09, -ARM_LEN - 0.05, 0.004, C.phone);
+            // Tourists hold up a phone with a lit screen.
+            if (side > 0 && spot.kind === 'tourist') {
+                r(-0.09, -ARM_LEN - 0.2, 0.09, -ARM_LEN - 0.04, 0.004, C.phone);
+                r(-0.07, -ARM_LEN - 0.18, 0.07, -ARM_LEN - 0.06, 0.006, C.screen);
+            }
             this.meshes.push(this.makeMesh('Arm', mb, n));
             return n;
         };
