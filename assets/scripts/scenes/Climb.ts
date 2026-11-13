@@ -1,5 +1,5 @@
 import {
-    _decorator, Color, Component, EventKeyboard, EventMouse, EventTouch, Graphics,
+    _decorator, Camera, Color, Component, EventKeyboard, EventMouse, EventTouch, Graphics,
     input, Input, KeyCode, Label, Node, UITransform, Vec2, Vec3, view,
 } from 'cc';
 import type { LevelConfig } from '../config/LevelConfig';
@@ -7,19 +7,25 @@ import { LevelLoader } from '../config/LevelLoader';
 import { GameSession } from '../core/GameSession';
 import { applyScreenFit } from '../core/ScreenFit';
 import {
-    ClimbSim, Dir, FALL_TEXT, NO_DIR, dirFromKeys, dirFromStick, formatClimbTime, isObstacle, randomSeed, zoneOf,
+    ClimbSim, Dir, FALL_TEXT, NO_DIR, dirFromKeys, dirFromStick, formatClimbTime, randomSeed,
 } from '../climb/ClimbCore';
+import { Tower3D } from './Tower3D';
 
 const { ccclass } = _decorator;
 
 // Presentation-only constants (rules and tunables live in levels.json).
-const CELL = 56;
 const STICK_RADIUS = 90;
 /** GDD 3: virtual stick dead zone 20 %. */
 const STICK_DEAD_ZONE = 0.2;
 /** GDD 7: freeze 0.3 s, then fall; the whole fall screen is 2.5 s. */
 const FALL_FREEZE_SEC = 0.3;
 const FALL_TOTAL_SEC = 2.5;
+/** Fall acceleration in world units / s² (3D view). */
+const FALL_G = 30;
+/** A press that moves less than this (pixels) is a tap, not a view drag. */
+const DRAG_SLOP = 8;
+/** Mouse events this soon after a touch are the browser's emulation of it; ignore them. */
+const TOUCH_MOUSE_GAP_MS = 800;
 const PLAYER_NAME = '霍將軍';
 /** ADR-02: level-to-level scroll lasts about 1.5 s. */
 const TRANSITION_SEC = 1.5;
@@ -63,9 +69,12 @@ type Mode = 'loading' | 'ready' | 'play' | 'paused' | 'transition' | 'falling' |
 const EVENT_LABEL = { wind: '風', rain: '雨', eagle: '鷹' } as const;
 
 /**
- * M1 climb scene: levels 1–12 in one run (grid climbing, grip on release, risk meter,
- * wind / rain / eagle, pagoda flare, scroll between levels, fall back to the start).
- * All rules are in ClimbCore; this component only reads input and draws colour blocks.
+ * Climb scene: levels 1–12 in one run (grid climbing, grip on release, risk meter,
+ * wind / rain / eagle, pagoda flare, rise between levels, fall back to the start).
+ * ADR-10: the tower is 3D and the grid wraps round all four faces; the camera orbits the
+ * tower axis (drag the upper half of the screen, mouse drag, or Q / E) and swings back to
+ * the climber after a moment. All rules are in ClimbCore; Tower3D draws the world and this
+ * component handles input, flow, effects and the 2D HUD.
  * Dev aid: `?level=6` in the page URL starts the run at that level (ADR-06 runs start at 1).
  */
 @ccclass('Climb')
@@ -77,10 +86,8 @@ export class Climb extends Component {
     private sim: ClimbSim | null = null;
     private mode: Mode = 'loading';
 
-    private world!: Node;
-    private wallG!: Graphics;
-    private player!: Node;
-    private playerG!: Graphics;
+    private tower: Tower3D | null = null;
+    private nameTag!: Label;
     private fxG!: Graphics;
     private hudG!: Graphics;
     private floorLabel!: Label;
@@ -91,20 +98,34 @@ export class Climb extends Component {
     private gmLabel!: Label;
     private overlayLabel!: Label;
 
-    private keys = { up: false, down: false, left: false, right: false };
+    private keys = { up: false, down: false, left: false, right: false, orbitL: false, orbitR: false };
     private stickId: number | null = null;
     private stickOrigin = new Vec2();
     private stickVec = new Vec2();
-    private camY = 0;
+    /** Touch that is turning the view, and its last x. */
+    private orbitId: number | null = null;
+    private orbitLastX = 0;
+    /** Mouse press: where it started, last x, and whether it became a drag. */
+    private mouseDown = false;
+    private mouseStart = new Vec2();
+    private mouseLastX = 0;
+    private mouseDragged = false;
+    private lastTouchMs = 0;
+    /** Radians of view orbit collected from drags since the last frame. */
+    private pendingOrbit = 0;
+    /** Climber's screen position (Canvas space), for the name tag and the eagle. */
+    private playerUi = new Vec3();
+    private tmpV = new Vec3();
     private fallSec = 0;
+    /** World y of the climber's feet while falling. */
     private fallY = 0;
     private fallV = 0;
+    private tumble = 0;
     private elapsed = 0;
     private lastTapMs = 0;
     private startIndex = 0;
     private nextSim: ClimbSim | null = null;
     private transSec = 0;
-    private transCam0 = 0;
 
     start(): void {
         applyScreenFit();
@@ -117,15 +138,24 @@ export class Climb extends Component {
         input.on(Input.EventType.TOUCH_END, this.onTouchEnd, this);
         input.on(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
         input.on(Input.EventType.MOUSE_DOWN, this.onMouseDown, this);
+        input.on(Input.EventType.MOUSE_MOVE, this.onMouseMove, this);
+        input.on(Input.EventType.MOUSE_UP, this.onMouseUp, this);
+
+        // The 3D camera clears the screen with the sky; the UI camera only draws on top.
+        const uiCam = this.node.getComponentInChildren(Camera);
+        if (uiCam) uiCam.clearFlags = Camera.ClearFlag.DEPTH_ONLY;
 
         LevelLoader.load().then((cfg) => {
             this.cfg = cfg;
             this.startIndex = this.resolveStartIndex(cfg);
+            this.tower = new Tower3D(cfg.player.rowsPerFloor);
+            return this.tower.init();
+        }).then(() => {
             this.newRun();
         }).catch((err: unknown) => {
             console.error(err);
             this.mode = 'error';
-            this.showOverlay(`levels.json 載入失敗\n${err instanceof Error ? err.message : String(err)}`);
+            this.showOverlay(`載入失敗\n${err instanceof Error ? err.message : String(err)}`);
         });
     }
 
@@ -137,6 +167,9 @@ export class Climb extends Component {
         input.off(Input.EventType.TOUCH_END, this.onTouchEnd, this);
         input.off(Input.EventType.TOUCH_CANCEL, this.onTouchEnd, this);
         input.off(Input.EventType.MOUSE_DOWN, this.onMouseDown, this);
+        input.off(Input.EventType.MOUSE_MOVE, this.onMouseMove, this);
+        input.off(Input.EventType.MOUSE_UP, this.onMouseUp, this);
+        this.tower?.destroy();
     }
 
     /** Read-only snapshot for tests and debugging. */
@@ -170,18 +203,18 @@ export class Climb extends Component {
         this.nextSim = null;
         this.sim = new ClimbSim(this.cfg, this.startIndex, randomSeed());
         console.log(`[Climb] level ${this.sim.level.id} seed ${this.sim.seed}`);
-        this.drawWall();
-        this.player.angle = 0;
-        this.camY = this.cellY(0) + this.camOffset();
+        this.tumble = 0;
+        this.tower!.setLevel(this.sim);
+        this.tower!.snap(this.sim);
         this.mode = 'ready';
         const l = this.sim.level;
-        this.showOverlay(`第 ${l.id} 關 ${l.name}\n${l.floors.replace('-', '–')}\n\n方向鍵 / WASD 或拖曳畫面攀爬\n放開 = 抓牢`);
+        this.showOverlay(`第 ${l.id} 關 ${l.name}\n${l.floors.replace('-', '–')}\n\n方向鍵 / WASD 或拖曳下半部攀爬\n放開 = 抓牢\n拖曳上半部 / Q E 旋轉視角\n可繞到其他面，轉角是危險區`);
     }
 
     update(dt: number): void {
         this.elapsed += dt;
         const sim = this.sim;
-        if (!sim) return;
+        if (!sim || !this.tower) return;
         const dir = this.currentDir();
 
         if (this.mode === 'ready' && (dir.dx !== 0 || dir.dy !== 0)) {
@@ -203,16 +236,17 @@ export class Climb extends Component {
     private beginFall(): void {
         this.mode = 'falling';
         this.fallSec = 0;
-        this.fallY = this.playerY();
+        this.fallY = this.tower!.feetY(this.sim as ClimbSim);
         this.fallV = 0;
+        this.tumble = 0;
     }
 
     private tickFall(dt: number): void {
         this.fallSec += dt;
         if (this.fallSec > FALL_FREEZE_SEC) {
-            this.fallV += 2600 * dt;
-            this.fallY = Math.max(this.cellY(0), this.fallY - this.fallV * dt);
-            this.player.angle = Math.min(160, this.player.angle + 300 * dt);
+            this.fallV += FALL_G * dt;
+            this.fallY = Math.max(this.tower!.floorY(), this.fallY - this.fallV * dt);
+            this.tumble = Math.min(1, this.tumble + 1.8 * dt);
         }
         if (this.fallSec >= FALL_TOTAL_SEC) {
             const sim = this.sim as ClimbSim;
@@ -230,7 +264,6 @@ export class Climb extends Component {
             this.nextSim = next;
             this.mode = 'transition';
             this.transSec = 0;
-            this.transCam0 = this.camY;
             const l = next.level;
             this.showOverlay(`第 ${sim.level.id} 關完成\n\n第 ${l.id} 關 ${l.name}\n${l.floors.replace('-', '–')}`);
             return;
@@ -240,22 +273,18 @@ export class Climb extends Component {
     }
 
     /**
-     * The next wall replaces the finished one on the first frame (its bottom platform is the
-     * same spot as the old top platform), then the camera rises and settles on the start.
+     * The next level's grid replaces the finished one on the first frame (it starts where the
+     * old one ended, on the same tower), then the camera rises and settles on the start.
      */
     private tickTransition(dt: number): void {
         this.transSec += dt;
         if (this.nextSim) {
-            // The old top platform and the new bottom platform are the same place: shift the
-            // camera by the old wall height so the swap is seamless.
-            this.transCam0 -= (this.sim as ClimbSim).wall.rows * CELL;
             this.sim = this.nextSim;
             this.nextSim = null;
             console.log(`[Climb] level ${this.sim.level.id}`);
-            this.drawWall();
+            this.tower!.setLevel(this.sim);
         }
         if (this.transSec < TRANSITION_SEC) return;
-        this.camY = this.cellY(0) + this.camOffset();
         this.mode = 'play';
         this.hideOverlay();
     }
@@ -292,6 +321,8 @@ export class Climb extends Component {
             case KeyCode.ARROW_DOWN: case KeyCode.KEY_S: this.keys.down = down; return true;
             case KeyCode.ARROW_LEFT: case KeyCode.KEY_A: this.keys.left = down; return true;
             case KeyCode.ARROW_RIGHT: case KeyCode.KEY_D: this.keys.right = down; return true;
+            case KeyCode.KEY_Q: this.keys.orbitL = down; return true;
+            case KeyCode.KEY_E: this.keys.orbitR = down; return true;
             default: return false;
         }
     }
@@ -322,13 +353,50 @@ export class Climb extends Component {
         return this.node.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(ui.x, ui.y, 0));
     }
 
+    private fromTouch(): boolean {
+        return Date.now() - this.lastTouchMs < TOUCH_MOUSE_GAP_MS;
+    }
+
+    /** Mouse: a click is a tap; a drag (left button) turns the view round the tower. */
     private onMouseDown(e: EventMouse): void {
-        this.tap(this.toLocal(e.getUILocation()));
+        if (this.fromTouch() || e.getButton() !== EventMouse.BUTTON_LEFT) return;
+        this.mouseDown = true;
+        this.mouseDragged = false;
+        const p = e.getUILocation();
+        this.mouseStart.set(p.x, p.y);
+        this.mouseLastX = p.x;
+    }
+
+    private onMouseMove(e: EventMouse): void {
+        if (!this.mouseDown || this.fromTouch()) return;
+        const p = e.getUILocation();
+        if (!this.mouseDragged && Vec2.distance(p, this.mouseStart) > DRAG_SLOP) this.mouseDragged = true;
+        if (this.mouseDragged) this.pendingOrbit += Tower3D.dragOrbit(p.x - this.mouseLastX);
+        this.mouseLastX = p.x;
+    }
+
+    private onMouseUp(e: EventMouse): void {
+        if (!this.mouseDown) return;
+        this.mouseDown = false;
+        if (this.fromTouch()) return;
+        if (!this.mouseDragged) this.tap(this.toLocal(e.getUILocation()));
+    }
+
+    /** Upper half of the screen (below the HUD band) turns the view; the rest is the stick. */
+    private inOrbitArea(local: Vec3): boolean {
+        const top = view.getVisibleSize().height / 2;
+        return local.y > 0 && local.y < top - 160;
     }
 
     private onTouchStart(e: EventTouch): void {
+        this.lastTouchMs = Date.now();
         const local = this.toLocal(e.getUILocation());
         const playing = this.mode === 'play' || this.mode === 'ready';
+        if (playing && this.orbitId === null && this.inOrbitArea(local)) {
+            this.orbitId = e.getID();
+            this.orbitLastX = e.getUILocation().x;
+            return;
+        }
         if (!playing || this.inPauseButton(local)) {
             this.tap(local);
             return;
@@ -341,6 +409,13 @@ export class Climb extends Component {
     }
 
     private onTouchMove(e: EventTouch): void {
+        this.lastTouchMs = Date.now();
+        if (e.getID() === this.orbitId) {
+            const x = e.getUILocation().x;
+            this.pendingOrbit += Tower3D.dragOrbit(x - this.orbitLastX);
+            this.orbitLastX = x;
+            return;
+        }
         if (e.getID() !== this.stickId) return;
         const local = this.toLocal(e.getUILocation());
         this.stickVec.set(local.x - this.stickOrigin.x, local.y - this.stickOrigin.y);
@@ -349,6 +424,11 @@ export class Climb extends Component {
     }
 
     private onTouchEnd(e: EventTouch): void {
+        this.lastTouchMs = Date.now();
+        if (e.getID() === this.orbitId) {
+            this.orbitId = null;
+            return;
+        }
         if (e.getID() !== this.stickId) return;
         this.stickId = null;
         this.stickVec.set(0, 0);
@@ -357,38 +437,6 @@ export class Climb extends Component {
     private inPauseButton(local: Vec3): boolean {
         const vs = view.getVisibleSize();
         return local.x > vs.width / 2 - 110 && local.y > vs.height / 2 - 110;
-    }
-
-    // ------------------------------------------------------------ geometry
-
-    private cellX(col: number): number {
-        const cols = this.sim ? this.sim.wall.cols : 1;
-        return (col - (cols - 1) / 2) * CELL;
-    }
-
-    private cellY(row: number): number {
-        return row * CELL + CELL / 2;
-    }
-
-    /** Keeps the climber a little below the screen centre. */
-    private camOffset(): number {
-        return view.getVisibleSize().height * 0.1;
-    }
-
-    private playerY(): number {
-        const s = this.sim as ClimbSim;
-        return this.cellY(this.lerp(s.fromRow, s.row, s.stepT));
-    }
-
-    private playerX(): number {
-        const s = this.sim as ClimbSim;
-        return this.cellX(this.lerp(s.fromCol, s.col, s.stepT));
-    }
-
-    private lerp(a: number, b: number, t: number): number {
-        if (t < 0) return b;
-        const e = t * t * (3 - 2 * t);
-        return a + (b - a) * e;
     }
 
     // ------------------------------------------------------------ nodes
@@ -414,13 +462,12 @@ export class Climb extends Component {
     }
 
     private buildNodes(): void {
-        this.world = this.makeNode('World', this.node);
-        this.wallG = this.makeNode('Wall', this.world).addComponent(Graphics);
-        this.player = this.makeNode('Player', this.world);
-        this.playerG = this.player.addComponent(Graphics);
-        const tag = this.makeLabel('Name', this.player, 20);
+        const tag = this.makeLabel('Name', this.node, 20);
         tag.string = PLAYER_NAME;
-        tag.node.setPosition(0, 46);
+        tag.enableOutline = true;
+        tag.outlineColor = new Color(0, 0, 0, 200);
+        tag.outlineWidth = 2;
+        this.nameTag = tag;
 
         this.fxG = this.makeNode('Fx', this.node).addComponent(Graphics);
         const hud = this.makeNode('Hud', this.node);
@@ -450,122 +497,6 @@ export class Climb extends Component {
 
     // ------------------------------------------------------------ drawing
 
-    private drawWall(): void {
-        const sim = this.sim as ClimbSim;
-        const { wall } = sim;
-        const g = this.wallG;
-        const rowsPerFloor = this.cfg!.player.rowsPerFloor;
-        const half = (wall.cols / 2) * CELL;
-        const top = wall.rows * CELL;
-        const firstLevel = sim.levelIndex === 0;
-        g.clear();
-
-        // Ground (level 1) or the previous level's platform, deep enough for tall screens.
-        g.fillColor = firstLevel ? C.ground : C.facade;
-        if (firstLevel) g.rect(-1200, -1600, 2400, 1600);
-        else g.rect(-half - 8, -1600, wall.cols * CELL + 16, 1600);
-        g.fill();
-        if (!firstLevel) {
-            // The floors already climbed, dimmed, so the space below isn't empty.
-            g.fillColor = alpha(C.safe, 90);
-            for (let r = -24; r < -1; r++) {
-                for (let c = 0; c < wall.cols; c++) g.rect(this.cellX(c) - CELL / 2 + 4, r * CELL + 4, CELL - 8, CELL - 8);
-            }
-            g.fill();
-            g.fillColor = C.platform;
-            g.rect(-half - 60, -36, wall.cols * CELL + 120, 36);
-            g.fill();
-        }
-        g.fillColor = C.facade;
-        g.rect(-half - 8, 0, wall.cols * CELL + 16, top);
-        g.fill();
-
-        // Windows, batched per colour.
-        const free = (c: number, r: number): boolean => !isObstacle(wall, c, r);
-        const fillCells = (color: Color, pick: (col: number, row: number) => boolean, inset: number): void => {
-            g.fillColor = color;
-            for (let r = 0; r < wall.rows; r++) {
-                for (let c = 0; c < wall.cols; c++) {
-                    if (pick(c, r)) g.rect(this.cellX(c) - CELL / 2 + inset, r * CELL + inset, CELL - 2 * inset, CELL - 2 * inset);
-                }
-            }
-            g.fill();
-        };
-        const safe = (c: number, r: number): boolean => free(c, r) && zoneOf(wall, c, r) === 'safe';
-        const danger = (c: number, r: number): boolean => free(c, r) && zoneOf(wall, c, r) === 'danger';
-        fillCells(C.safe, safe, 4);
-        fillCells(C.danger, danger, 4);
-        fillCells(C.obstacle, (c, r) => !free(c, r), 2);
-        // Glass highlight ring.
-        fillCells(C.safeHi, safe, 10);
-        fillCells(C.safe, safe, 14);
-        fillCells(C.dangerHi, danger, 10);
-        fillCells(C.danger, danger, 14);
-
-        // Obstacle hatching (vent / cleaning rail).
-        g.strokeColor = C.obstacleMark;
-        g.lineWidth = 4;
-        for (const key of wall.obstacles) {
-            const x = this.cellX(key % wall.cols);
-            const y = this.cellY(Math.floor(key / wall.cols));
-            for (let i = -1; i <= 1; i++) {
-                g.moveTo(x - 20, y + i * 12);
-                g.lineTo(x + 20, y + i * 12);
-            }
-        }
-        g.stroke();
-
-        // Floor slabs every rowsPerFloor rows.
-        g.fillColor = C.slab;
-        for (let r = rowsPerFloor; r < wall.rows; r += rowsPerFloor) g.rect(-half - 8, r * CELL - 3, wall.cols * CELL + 16, 6);
-        g.fill();
-
-        // Fall lines just outside the outer columns.
-        g.strokeColor = C.fallLine;
-        g.lineWidth = 3;
-        for (const x of [-half - 10, half + 10]) {
-            for (let y = 0; y < top; y += 40) {
-                g.moveTo(x, y);
-                g.lineTo(x, y + 22);
-            }
-        }
-        g.stroke();
-
-        // Goal platform with a railing.
-        g.fillColor = C.platform;
-        g.rect(-half - 60, top, wall.cols * CELL + 120, 40);
-        g.fill();
-        g.strokeColor = C.platform;
-        g.lineWidth = 4;
-        g.moveTo(-half - 60, top + 90);
-        g.lineTo(half + 60, top + 90);
-        for (let x = -half - 60; x <= half + 60; x += 40) {
-            g.moveTo(x, top + 40);
-            g.lineTo(x, top + 90);
-        }
-        g.stroke();
-
-        // Floor numbers on the right of the facade (the risk meter owns the left edge).
-        this.world.children.filter((n) => n.name === 'FloorTag').forEach((n) => n.destroy());
-        const { floorFrom, floorTo } = sim.level;
-        if (floorFrom !== null && floorTo !== null) {
-            for (let f = floorFrom; f <= floorTo; f++) {
-                const tag = this.makeLabel('FloorTag', this.world, 22, Label.HorizontalAlign.LEFT);
-                tag.string = `${f}F`;
-                tag.color = alpha(C.text, 150);
-                tag.node.setPosition(half + 18, (f - floorFrom) * rowsPerFloor * CELL + 18);
-            }
-            const goal = this.makeLabel('FloorTag', this.world, 26, Label.HorizontalAlign.LEFT);
-            goal.string = `${floorTo}F 平台`;
-            goal.color = C.text;
-            goal.node.setPosition(-half - 30, top + 64);
-        }
-        const entrance = this.makeLabel('FloorTag', this.world, 26);
-        entrance.string = firstLevel ? '入口' : `${(floorFrom ?? 1) - 1}F 平台`;
-        entrance.node.setPosition(0, -60);
-        this.player.setSiblingIndex(this.world.children.length - 1);
-    }
-
     private render(dt: number): void {
         const sim = this.sim as ClimbSim;
         const vs = view.getVisibleSize();
@@ -576,21 +507,27 @@ export class Climb extends Component {
         const risk = this.cfg!.risk;
         const s = sim.scheduler;
 
-        // Player and camera.
-        const py = this.mode === 'falling' || this.mode === 'fallen' ? this.fallY : this.playerY();
-        const shake = sim.tier === 'crisis' && this.mode === 'play' ? (Math.random() - 0.5) * 6 : 0;
-        const tremble = sim.tier !== 'safe' && this.mode === 'play' ? Math.sin(this.elapsed * 60) * 1.5 : 0;
-        this.player.setPosition(this.playerX() + tremble, py);
-        if (this.mode === 'transition') {
-            // Rise past the platform and settle on the next level's start, in one continuous move.
-            const t = Math.min(1, this.transSec / TRANSITION_SEC);
-            this.camY = this.transCam0 + Math.sin(Math.PI * t) * vs.height * 0.15;
-        } else {
-            const targetCam = py + this.camOffset();
-            this.camY += (targetCam - this.camY) * (1 - Math.exp(-dt * 8));
-        }
-        this.world.setPosition(shake, -this.camY);
-        this.drawPlayer(sim);
+        // Climber and camera (3D).
+        const fallen = this.mode === 'falling' || this.mode === 'fallen';
+        const shake = sim.tier === 'crisis' && this.mode === 'play' ? (Math.random() - 0.5) * 0.12 : 0;
+        const keyDir = (this.keys.orbitR ? 1 : 0) - (this.keys.orbitL ? 1 : 0);
+        const orbit = this.pendingOrbit + Tower3D.keyOrbit(dt, keyDir);
+        this.pendingOrbit = 0;
+        // Rise past the platform between levels, in one continuous move.
+        const lift = this.mode === 'transition' ? Math.sin(Math.PI * Math.min(1, this.transSec / TRANSITION_SEC)) * 3 : 0;
+        const tower = this.tower as Tower3D;
+        tower.update(dt, sim, {
+            elapsed: this.elapsed,
+            fallY: fallen ? this.fallY : null,
+            tumble: fallen ? this.tumble : 0,
+            grip: sim.gripping && !fallen,
+            orbitInput: orbit,
+            shake,
+            lift,
+        });
+        tower.camera.convertToUINode(tower.headWorld(this.tmpV), this.node, this.playerUi);
+        this.nameTag.node.setPosition(this.playerUi.x, this.playerUi.y + 14);
+        this.nameTag.color = sim.tier === 'crisis' && Math.floor(this.elapsed * 10) % 2 === 0 ? C.riskCrisis : C.text;
 
         // Effects layer (screen space). Warning phase gives a softer hint of what is coming.
         const fx = this.fxG;
@@ -637,7 +574,7 @@ export class Climb extends Component {
             }
             fx.stroke();
         } else if (kind === 'eagle') {
-            const ey = (py - this.camY) + 220;
+            const ey = this.playerUi.y + 170;
             if (s.state === 'warning') {
                 // Shadow sweeping over the glass.
                 const t = 1 - s.left / this.cfg!.events.warningSec;
@@ -687,8 +624,7 @@ export class Climb extends Component {
         h.rect(left, top - 150, vs.width, 150);
         h.fill();
 
-        const fallen = this.mode === 'falling' || this.mode === 'fallen';
-        const floor = fallen ? sim.floorAt(Math.floor((this.fallY - CELL / 2) / CELL)) : sim.floor;
+        const floor = fallen ? sim.floorAt(tower.rowAtFeet(this.fallY)) : sim.floor;
         this.floorLabel.string = floor === null ? sim.level.name : `${floor}F`;
         this.floorLabel.node.setPosition(0, top - 52);
         const shown = sim.level;
@@ -761,36 +697,6 @@ export class Climb extends Component {
             h.fillColor = new Color(255, 255, 255, 120);
             h.circle(this.stickOrigin.x + this.stickVec.x, this.stickOrigin.y + this.stickVec.y, 36);
             h.fill();
-        }
-    }
-
-    private drawPlayer(sim: ClimbSim): void {
-        const g = this.playerG;
-        g.clear();
-        const grip = sim.gripping && this.mode !== 'falling';
-        const a = grip ? 150 : 255;
-        const reach = sim.stepping ? Math.sin(sim.stepT * Math.PI) * 8 : 0;
-        // Limbs.
-        g.strokeColor = alpha(C.skin, a);
-        g.lineWidth = 6;
-        const armY = grip ? 14 : 18 + reach;
-        g.moveTo(-10, 8); g.lineTo(-22, armY);
-        g.moveTo(10, 8); g.lineTo(22, grip ? 14 : 18 - reach);
-        g.moveTo(-6, -14); g.lineTo(-16, -26 + reach);
-        g.moveTo(6, -14); g.lineTo(16, -26 - reach);
-        g.stroke();
-        // Body and head.
-        g.fillColor = alpha(sim.tier === 'crisis' && Math.floor(this.elapsed * 10) % 2 === 0 ? C.riskCrisis : C.body, a);
-        g.rect(-12, -16, 24, 30);
-        g.fill();
-        g.fillColor = alpha(C.skin, a);
-        g.circle(0, grip ? 18 : 24, 10);
-        g.fill();
-        if (sim.eagleSpotSec > 0) {
-            g.fillColor = C.riskCrisis;
-            g.rect(-3, 44, 6, 18);
-            g.rect(-3, 36, 6, 5);
-            g.fill();
         }
     }
 }

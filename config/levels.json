@@ -87,6 +87,9 @@
     "topRows": 24,
     "extraDangerPerSide": 1
   },
+  "tower": {
+    "faces": 4
+  },
   "levels": [
     {
       "id": 1,

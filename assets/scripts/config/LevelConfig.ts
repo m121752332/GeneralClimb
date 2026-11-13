@@ -53,6 +53,12 @@ export interface PagodaFlareConfig {
     extraDangerPerSide: number;
 }
 
+/** ADR-10: how the climbable columns wrap around the tower. */
+export interface TowerConfig {
+    /** 1 = one flat wall (fall lines at both edges); 4 = all four faces, round the corners. */
+    faces: number;
+}
+
 export interface LevelDef {
     id: number;
     name: string;
@@ -82,6 +88,7 @@ export interface LevelConfig {
     events: EventsConfig;
     widths: Record<string, WidthConfig>;
     pagodaFlare: PagodaFlareConfig;
+    tower: TowerConfig;
     levels: LevelDef[];
     practice: PracticeConfig;
 }
@@ -300,6 +307,12 @@ function checkPagodaFlare(c: Checker, root: Obj): void {
     c.num(f, 'extraDangerPerSide', '$.pagodaFlare', { min: 0, int: true });
 }
 
+function checkTower(c: Checker, root: Obj): void {
+    const t = c.obj(root, 'tower', '$');
+    const faces = c.num(t, 'faces', '$.tower', { int: true });
+    if (t && Number.isInteger(faces) && faces !== 1 && faces !== 4) c.fail('$.tower.faces', `must be 1 or 4, got ${faces}`);
+}
+
 function checkPractice(c: Checker, root: Obj, widths: Obj): void {
     const p = c.obj(root, 'practice', '$');
     c.num(p, 'floors', '$.practice', { min: 1, int: true });
@@ -337,6 +350,7 @@ export function parseLevelConfig(input: unknown): LevelConfig {
     const widths = checkWidths(c, root);
     checkLevels(c, root, widths);
     checkPagodaFlare(c, root);
+    checkTower(c, root);
     checkPractice(c, root, widths);
 
     if (c.issues.length > 0) throw new LevelConfigError(c.issues);
