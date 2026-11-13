@@ -8,6 +8,7 @@ import { GameSession } from '../core/GameSession';
 import { formatBest, readLocalBest } from '../core/LocalBest';
 import { applyScreenFit } from '../core/ScreenFit';
 import { settings } from '../core/Settings';
+import { sound } from '../core/Sound';
 import { openLevelSelect } from '../ui/LevelSelectPanel';
 import { openSettings } from '../ui/SettingsPanel';
 import { Toast } from '../ui/Toast';
@@ -40,6 +41,7 @@ export class Home extends Component {
         this.buildCorners();
         this.toast = new Toast(this.node);
         this.syncDevMode();
+        sound().music('home');
 
         LevelLoader.load().then((cfg) => {
             this.config = cfg;
@@ -156,6 +158,8 @@ export class Home extends Component {
         sound.on(Button.EventType.CLICK, () => {
             const muted = settings().set({ muted: !settings().get().muted }).muted;
             this.drawSound?.();
+            sound().applyVolume();
+            if (!muted) sound().play('click');
             this.toast.show(muted ? '已靜音' : '已開啟聲音', 1);
         });
 

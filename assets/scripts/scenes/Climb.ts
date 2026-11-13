@@ -7,6 +7,7 @@ import { LevelLoader } from '../config/LevelLoader';
 import { effectiveSpeed, nextSpeed, speedText } from '../core/ClimbSpeed';
 import { GameSession } from '../core/GameSession';
 import { settings } from '../core/Settings';
+import { sound } from '../core/Sound';
 import { applyScreenFit } from '../core/ScreenFit';
 import {
     ClimbSim, Dir, FALL_TEXT, NO_DIR, dirFromKeys, dirFromStick, formatClimbTime, randomSeed,
@@ -150,6 +151,8 @@ export class Climb extends Component {
     private nextSim: ClimbSim | null = null;
     private transSec = 0;
     private endSec = 0;
+    /** The fall has hit the ground (plays the landing thud once). */
+    private landed = false;
 
     start(): void {
         applyScreenFit();
@@ -194,6 +197,7 @@ export class Climb extends Component {
         input.off(Input.EventType.MOUSE_MOVE, this.onMouseMove, this);
         input.off(Input.EventType.MOUSE_UP, this.onMouseUp, this);
         this.tower?.destroy();
+        sound().music(null);
     }
 
     /** Read-only snapshot for tests and debugging. */
@@ -232,6 +236,7 @@ export class Climb extends Component {
         this.tumble = 0;
         this.tower!.setLevel(this.sim);
         this.tower!.snap(this.sim);
+        sound().music('climb');
         this.mode = 'ready';
         const l = this.sim.level;
         const hint = l.floorFrom === null ? '爬梯只能上下，強風時抓牢' : '可繞到其他面，轉角是危險區';
@@ -249,7 +254,9 @@ export class Climb extends Component {
             this.hideOverlay();
         }
         if (this.mode === 'play') {
+            const before = { stepping: sim.stepping, gripping: sim.gripping, event: sim.scheduler.state };
             sim.update(dt, dir);
+            this.playSimSounds(sim, before);
             if (sim.phase === 'fallen') this.beginFall();
             else if (sim.phase === 'cleared') this.onCleared();
         } else if (this.mode === 'falling') {
@@ -262,7 +269,21 @@ export class Climb extends Component {
         this.render(dt);
     }
 
+    /** Effects for what changed during this frame's update (GDD §9 sounds, M4). */
+    private playSimSounds(sim: ClimbSim, before: { stepping: boolean; gripping: boolean; event: string }): void {
+        const sfx = sound();
+        if (sim.stepping && !before.stepping) sfx.play('step');
+        else if (sim.gripping && !before.gripping) sfx.play('grip');
+        const sched = sim.scheduler;
+        if (sched.state === 'warning' && before.event !== 'warning' && sched.kind) {
+            sfx.play(sched.kind === 'wind' ? 'warnWind' : sched.kind === 'rain' ? 'warnRain' : 'warnEagle');
+        }
+    }
+
     private beginFall(): void {
+        sound().music(null);
+        sound().play('fall');
+        this.landed = false;
         this.mode = 'falling';
         this.fallSec = 0;
         this.fallY = this.tower!.fallStartY(this.sim as ClimbSim);
@@ -275,6 +296,10 @@ export class Climb extends Component {
         if (this.fallSec > FALL_FREEZE_SEC) {
             this.fallV += FALL_G * dt;
             this.fallY = Math.max(this.tower!.floorY(), this.fallY - this.fallV * dt);
+            if (!this.landed && this.fallY <= this.tower!.floorY()) {
+                this.landed = true;
+                sound().play('land');
+            }
             this.tumble = Math.min(1, this.tumble + 1.8 * dt);
         }
         if (this.fallSec >= FALL_TOTAL_SEC) {
@@ -291,6 +316,7 @@ export class Climb extends Component {
         if (next) {
             // ADR-02: stand on the platform, scroll up, show the next level; no black screen.
             this.nextSim = next;
+            sound().play('levelUp');
             this.mode = 'transition';
             this.transSec = 0;
             const l = next.level;
@@ -298,6 +324,8 @@ export class Climb extends Component {
             return;
         }
         // Summit: about 10 s sitting on the top looking down over the city, then the result.
+        sound().music(null);
+        sound().play('summit');
         this.mode = 'ending';
         this.endSec = 0;
         this.hideOverlay();
@@ -349,8 +377,10 @@ export class Climb extends Component {
     private togglePause(): void {
         if (this.mode === 'play') {
             this.mode = 'paused';
+            sound().music(null);
             this.showOverlay('暫停中\n\nEsc 或點擊繼續\n右上「退出」回主畫面');
         } else if (this.mode === 'paused') {
+            sound().music('climb');
             this.mode = 'play';
             this.hideOverlay();
         }
