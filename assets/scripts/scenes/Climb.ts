@@ -194,7 +194,7 @@ export class Climb extends Component {
         } catch {
             // no URL in this environment
         }
-        const ok = Number.isInteger(index) && index >= 0 && index < cfg.levels.length && cfg.levels[index].floorFrom !== null;
+        const ok = Number.isInteger(index) && index >= 0 && index < cfg.levels.length;
         return ok ? index : 0;
     }
 

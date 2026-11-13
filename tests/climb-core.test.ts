@@ -56,14 +56,14 @@ test('rng is deterministic per seed', () => {
     assert.notDeepEqual(xs, Array.from({ length: 5 }, createRng(43)));
 });
 
-test('level 1 wall: 11 cols (2 danger | 7 safe | 2 danger), 96 rows, obstacles keep a safe route', () => {
+test('level 1 wall: 11 cols (1 danger | 9 safe | 1 danger), 96 rows, obstacles keep a safe route', () => {
     const c = cfg();
     for (let seed = 1; seed <= 200; seed++) {
         const wall = buildWall(c.widths.wide, c.levels[0], createRng(seed));
         assert.equal(wall.cols, 11);
         assert.equal(wall.rows, 96);
         assert.equal(wall.startCol, 5);
-        assert.deepEqual([0, 1, 2, 8, 9, 10].map((col) => zoneOf(wall, col)), ['danger', 'danger', 'safe', 'safe', 'danger', 'danger']);
+        assert.deepEqual([0, 1, 9, 10].map((col) => zoneOf(wall, col)), ['danger', 'safe', 'safe', 'danger']);
         assert.equal(zoneOf(wall, -1), 'out');
         assert.equal(wall.obstacles.size, 8, `seed ${seed}: one obstacle per 12 rows`);
         for (const key of wall.obstacles) assert.ok(key >= wall.cols, 'no obstacle on the start row');
@@ -152,15 +152,16 @@ test('one cell per cellSec; release grips after gripDelaySec', () => {
 test('flat wall: danger zone adds risk; stepping past the outer column falls with "edge"', () => {
     const c = flatCfg();
     const sim = new ClimbSim(c, 0, 7);
-    // 5 -> 4 -> 3 -> 2 are safe, 1 and 0 danger, -1 is the fall line.
-    for (let i = 0; i < 4 && sim.phase === 'climbing'; i++) {
-        run(sim, c.player.cellSec + FRAME, LEFT);
-    }
+    // Off the plaza first; then 5 -> 1 are safe, 0 is danger, -1 is the fall line.
+    sim.row = sim.fromRow = 1;
+    sim.wall.obstacles.clear();
+    steps(sim, 5, LEFT);
+    assert.equal(sim.col, 0);
     assert.equal(zoneOf(sim.wall, sim.col), 'danger');
     const before = sim.risk;
     run(sim, 1);
     assert.ok(sim.risk > before, 'risk rises while gripping in the danger zone');
-    run(sim, 3 * (c.player.cellSec + FRAME), LEFT);
+    steps(sim, 1, LEFT);
     assert.equal(sim.phase, 'fallen');
     assert.equal(sim.fallCause, 'edge');
 });
@@ -168,7 +169,9 @@ test('flat wall: danger zone adds risk; stepping past the outer column falls wit
 test('risk reaching max in the danger zone also falls', () => {
     const c = flatCfg();
     const sim = new ClimbSim(c, 0, 7);
-    run(sim, 4 * (c.player.cellSec + FRAME), LEFT);
+    sim.row = sim.fromRow = 1;
+    sim.wall.obstacles.clear();
+    steps(sim, 5, LEFT);
     run(sim, 10);
     assert.equal(sim.phase, 'fallen');
     assert.equal(sim.fallCause, 'edge');
@@ -250,11 +253,11 @@ test('level 6: medium wall (9 cols), pagoda flare widens danger on the top 24 ro
         assert.equal(wall.cols, 9);
         assert.equal(wall.rows, 96);
         assert.equal(wall.obstacles.size, 16, `seed ${seed}: two obstacles per 12 rows`);
-        assert.equal(dangerAt(wall, 71), 2);
-        assert.equal(dangerAt(wall, 72), 3);
-        assert.equal(zoneOf(wall, 2, 71), 'safe');
-        assert.equal(zoneOf(wall, 2, 72), 'danger');
-        assert.equal(zoneOf(wall, 6, 95), 'danger');
+        assert.equal(dangerAt(wall, 71), 1);
+        assert.equal(dangerAt(wall, 72), 2);
+        assert.equal(zoneOf(wall, 1, 71), 'safe');
+        assert.equal(zoneOf(wall, 1, 72), 'danger');
+        assert.equal(zoneOf(wall, 7, 95), 'danger');
         assert.ok(hasSafeRoute(wall));
     }
 });
@@ -293,7 +296,19 @@ test('next level carries risk, time, scheduler and run max floor', () => {
     assert.equal(new ClimbSim(c, 0, 5).next(), null, 'only after clearing');
     const l12 = new ClimbSim(c, 11, 5);
     l12.phase = 'cleared';
-    assert.equal(l12.next(), null, 'spire is not built yet');
+    l12.maxRow = l12.wall.rows - 1;
+    const l13 = l12.next();
+    assert.ok(l13, 'the spire follows the top floors');
+    assert.equal(l13.level.floors, 'spire-lower');
+    assert.equal(l13.floor, null);
+    assert.equal(l13.runMaxFloor, 101);
+    l13.phase = 'cleared';
+    const l14 = l13.next();
+    assert.ok(l14);
+    assert.equal(l14.summit, false);
+    l14.phase = 'cleared';
+    assert.equal(l14.summit, true);
+    assert.equal(l14.next(), null, 'nothing above the spire');
 });
 
 function windSim(c = cfg()): ClimbSim {
@@ -301,6 +316,9 @@ function windSim(c = cfg()): ClimbSim {
     sim.scheduler.setWindChance(1);
     run(sim, c.events.wind.firstSec + c.events.warningSec + 0.05);
     assert.equal(sim.scheduler.activeKind, 'wind');
+    // Up on the wall: a platform shelters the climber from the push.
+    sim.row = sim.fromRow = 1;
+    sim.wall.obstacles.clear();
     return sim;
 }
 
@@ -350,8 +368,8 @@ test('tower: four faces wrap; past the outer column goes round the corner, no ed
 test('tower: zones and obstacles repeat per face; wrapCol normalises', () => {
     const c = cfg();
     const wall = buildWall(c.widths.wide, c.levels[0], createRng(3), undefined, 4);
-    assert.deepEqual([0, 1, 2, 10, 11, 12, 13, 21, 22, 43].map((col) => zoneOf(wall, col)),
-        ['danger', 'danger', 'safe', 'danger', 'danger', 'danger', 'safe', 'danger', 'danger', 'danger']);
+    assert.deepEqual([0, 1, 9, 10, 11, 12, 21, 22, 43].map((col) => zoneOf(wall, col)),
+        ['danger', 'safe', 'safe', 'danger', 'danger', 'safe', 'danger', 'danger', 'danger']);
     assert.equal(wrapCol(wall, -1), 43);
     assert.equal(wrapCol(wall, 44), 0);
     assert.equal(zoneOf(wall, -1), 'danger', 'no fall line on a tower');
@@ -372,4 +390,53 @@ test('schema: tower.faces must be 1 or 4', () => {
     assert.throws(() => parseLevelConfig(bad), /tower\.faces/);
     delete bad.tower;
     assert.throws(() => parseLevelConfig(bad), /tower/);
+});
+
+test('platform: standing and walking on the plaza adds no risk, even at a corner', () => {
+    const c = cfg();
+    const sim = new ClimbSim(c, 0, 7);
+    assert.equal(sim.onPlatform, true);
+    steps(sim, 6, LEFT);
+    assert.equal(sim.col, 43);
+    assert.equal(zoneOf(sim.wall, sim.col), 'danger');
+    run(sim, 5);
+    assert.equal(sim.risk, 0, 'no passive risk on the platform');
+    // Climb onto the corner of the wall: now the danger zone counts.
+    steps(sim, 1, UP);
+    assert.equal(sim.onPlatform, false);
+    run(sim, 1);
+    assert.ok(sim.risk > 0);
+});
+
+test('platform: level 4 starts on the ledge above the base; levels 2-3 and 14 do not', () => {
+    const c = cfg();
+    assert.deepEqual(c.levels.map((l) => l.startPlatform), [true, false, false, ...Array(10).fill(true), false]);
+});
+
+test('ladder: spire levels are one column, sideways input does nothing, gripping in wind is safe', () => {
+    const c = cfg();
+    const sim = new ClimbSim(c, 12, 3);
+    assert.equal(sim.wall.cols, 1);
+    assert.equal(sim.wall.faces, 1);
+    assert.equal(sim.wall.rows, c.player.ladderRows);
+    steps(sim, 1, LEFT);
+    assert.equal(sim.col, 0);
+    assert.equal(sim.phase, 'climbing');
+    steps(sim, 3, UP);
+    assert.equal(sim.row, 3);
+    steps(sim, 1, { dx: 1, dy: 0 });
+    assert.equal(sim.col, 0, 'no stepping off the ladder');
+    assert.equal(sim.phase, 'climbing');
+});
+
+test('the whole run from level 12 to the summit can be climbed', () => {
+    const c = cfg();
+    let sim: ClimbSim | null = new ClimbSim(c, 12, 9);
+    for (let i = 0; i < 2 && sim; i++) {
+        autoClimb(sim);
+        assert.equal(sim.phase, 'cleared');
+        if (sim.levelIndex === 13) assert.equal(sim.summit, true);
+        sim = sim.next();
+    }
+    assert.equal(sim, null);
 });

@@ -50,18 +50,18 @@
   "widths": {
     "wide": {
       "cols": 11,
-      "safe": 7,
-      "danger": 2
+      "safe": 9,
+      "danger": 1
     },
     "medium": {
       "cols": 9,
-      "safe": 5,
-      "danger": 2
+      "safe": 7,
+      "danger": 1
     },
     "mediumNarrow": {
       "cols": 7,
-      "safe": 3,
-      "danger": 2
+      "safe": 5,
+      "danger": 1
     },
     "narrow": {
       "cols": 5,
@@ -69,9 +69,9 @@
       "danger": 1
     },
     "xnarrow": {
-      "cols": 5,
-      "safe": 1,
-      "danger": 2
+      "cols": 4,
+      "safe": 2,
+      "danger": 1
     },
     "ladder": {
       "cols": 1,
@@ -97,7 +97,8 @@
       "floors": "1-8F",
       "width": "wide",
       "windChance": 0.0,
-      "obstaclesPer12Rows": 1
+      "obstaclesPer12Rows": 1,
+      "startPlatform": true
     },
     {
       "id": 2,
@@ -105,7 +106,8 @@
       "floors": "9-17F",
       "width": "wide",
       "windChance": 0.2,
-      "obstaclesPer12Rows": 1
+      "obstaclesPer12Rows": 1,
+      "startPlatform": false
     },
     {
       "id": 3,
@@ -113,7 +115,8 @@
       "floors": "18-26F",
       "width": "medium",
       "windChance": 0.25,
-      "obstaclesPer12Rows": 1
+      "obstaclesPer12Rows": 1,
+      "startPlatform": false
     },
     {
       "id": 4,
@@ -121,7 +124,8 @@
       "floors": "27-34F",
       "width": "medium",
       "windChance": 0.3,
-      "obstaclesPer12Rows": 2
+      "obstaclesPer12Rows": 2,
+      "startPlatform": true
     },
     {
       "id": 5,
@@ -129,7 +133,8 @@
       "floors": "35-42F",
       "width": "medium",
       "windChance": 0.35,
-      "obstaclesPer12Rows": 2
+      "obstaclesPer12Rows": 2,
+      "startPlatform": true
     },
     {
       "id": 6,
@@ -137,7 +142,8 @@
       "floors": "43-50F",
       "width": "medium",
       "windChance": 0.4,
-      "obstaclesPer12Rows": 2
+      "obstaclesPer12Rows": 2,
+      "startPlatform": true
     },
     {
       "id": 7,
@@ -145,7 +151,8 @@
       "floors": "51-58F",
       "width": "mediumNarrow",
       "windChance": 0.45,
-      "obstaclesPer12Rows": 2
+      "obstaclesPer12Rows": 2,
+      "startPlatform": true
     },
     {
       "id": 8,
@@ -153,7 +160,8 @@
       "floors": "59-66F",
       "width": "mediumNarrow",
       "windChance": 0.5,
-      "obstaclesPer12Rows": 2
+      "obstaclesPer12Rows": 2,
+      "startPlatform": true
     },
     {
       "id": 9,
@@ -161,7 +169,8 @@
       "floors": "67-74F",
       "width": "narrow",
       "windChance": 0.55,
-      "obstaclesPer12Rows": 3
+      "obstaclesPer12Rows": 3,
+      "startPlatform": true
     },
     {
       "id": 10,
@@ -169,7 +178,8 @@
       "floors": "75-82F",
       "width": "narrow",
       "windChance": 0.6,
-      "obstaclesPer12Rows": 3
+      "obstaclesPer12Rows": 3,
+      "startPlatform": true
     },
     {
       "id": 11,
@@ -177,7 +187,8 @@
       "floors": "83-90F",
       "width": "narrow",
       "windChance": 0.65,
-      "obstaclesPer12Rows": 3
+      "obstaclesPer12Rows": 3,
+      "startPlatform": true
     },
     {
       "id": 12,
@@ -185,7 +196,8 @@
       "floors": "91-101F",
       "width": "xnarrow",
       "windChance": 0.7,
-      "obstaclesPer12Rows": 3
+      "obstaclesPer12Rows": 3,
+      "startPlatform": true
     },
     {
       "id": 13,
@@ -193,7 +205,8 @@
       "floors": "spire-lower",
       "width": "ladder",
       "windChance": 0.7,
-      "obstaclesPer12Rows": 0
+      "obstaclesPer12Rows": 0,
+      "startPlatform": true
     },
     {
       "id": 14,
@@ -201,7 +214,8 @@
       "floors": "spire-upper",
       "width": "ladder",
       "windChance": 0.7,
-      "obstaclesPer12Rows": 0
+      "obstaclesPer12Rows": 0,
+      "startPlatform": false
     }
   ],
   "practice": {
