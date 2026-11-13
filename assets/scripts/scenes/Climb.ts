@@ -4,6 +4,7 @@ import {
 } from 'cc';
 import type { LevelConfig } from '../config/LevelConfig';
 import { LevelLoader } from '../config/LevelLoader';
+import { GameSession } from '../core/GameSession';
 import { applyScreenFit } from '../core/ScreenFit';
 import {
     ClimbSim, Dir, FALL_TEXT, NO_DIR, dirFromKeys, dirFromStick, formatClimbTime, isObstacle, randomSeed, zoneOf,
@@ -87,6 +88,7 @@ export class Climb extends Component {
     private timeLabel!: Label;
     private eventLabel!: Label;
     private riskLabel!: Label;
+    private gmLabel!: Label;
     private overlayLabel!: Label;
 
     private keys = { up: false, down: false, left: false, right: false };
@@ -146,9 +148,13 @@ export class Climb extends Component {
 
     // ------------------------------------------------------------ run flow
 
-    /** `?level=N` (1-based) overrides levelIndex for testing; spire levels are not playable yet. */
+    /**
+     * Start level: GameSession.levelIndex from Home (always 0 unless developer mode / RUNGM
+     * picked a level), or `?level=N` (1-based) for testing. Spire levels are not playable yet.
+     * A fall restarts the run at this level.
+     */
     private resolveStartIndex(cfg: LevelConfig): number {
-        let index = this.levelIndex;
+        let index = GameSession.levelIndex || this.levelIndex;
         try {
             const q = new URLSearchParams(globalThis.location?.search ?? '').get('level');
             if (q !== null) index = Number(q) - 1;
@@ -233,13 +239,19 @@ export class Climb extends Component {
         this.showOverlay(`抵達 ${sim.level.floorTo}F！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}\n\n尖塔段製作中\n點擊或按空白鍵 再玩一次`);
     }
 
+    /**
+     * First half: scroll up off the finished level. Halfway: swap in the next wall below the
+     * camera. Second half: keep scrolling up onto its start, so the screen is never empty.
+     */
     private tickTransition(dt: number): void {
         this.transSec += dt;
-        if (this.transSec < TRANSITION_SEC || !this.nextSim) return;
-        this.sim = this.nextSim;
-        this.nextSim = null;
-        console.log(`[Climb] level ${this.sim.level.id}`);
-        this.drawWall();
+        if (this.nextSim && this.transSec >= TRANSITION_SEC / 2) {
+            this.sim = this.nextSim;
+            this.nextSim = null;
+            console.log(`[Climb] level ${this.sim.level.id}`);
+            this.drawWall();
+        }
+        if (this.transSec < TRANSITION_SEC) return;
         this.camY = this.cellY(0) + this.camOffset();
         this.mode = 'play';
         this.hideOverlay();
@@ -416,6 +428,11 @@ export class Climb extends Component {
         this.eventLabel = this.makeLabel('Event', hud, 40);
         this.riskLabel = this.makeLabel('Risk', hud, 20);
         this.riskLabel.string = '風險';
+        const gm = this.makeLabel('GmBadge', hud, 24);
+        gm.string = 'GM 開發人員模式';
+        gm.color = hex('#ffd34a');
+        gm.node.active = GameSession.devMode === true;
+        this.gmLabel = gm;
         this.overlayLabel = this.makeLabel('Overlay', hud, 36);
     }
 
@@ -442,9 +459,16 @@ export class Climb extends Component {
 
         // Ground (level 1) or the previous level's platform, deep enough for tall screens.
         g.fillColor = firstLevel ? C.ground : C.facade;
-        g.rect(-1200, -1600, 2400, 1600);
+        if (firstLevel) g.rect(-1200, -1600, 2400, 1600);
+        else g.rect(-half - 8, -1600, wall.cols * CELL + 16, 1600);
         g.fill();
         if (!firstLevel) {
+            // The floors already climbed, dimmed, so the space below isn't empty.
+            g.fillColor = alpha(C.safe, 90);
+            for (let r = -24; r < -1; r++) {
+                for (let c = 0; c < wall.cols; c++) g.rect(this.cellX(c) - CELL / 2 + 4, r * CELL + 4, CELL - 8, CELL - 8);
+            }
+            g.fill();
             g.fillColor = C.platform;
             g.rect(-half - 60, -36, wall.cols * CELL + 120, 36);
             g.fill();
@@ -528,10 +552,10 @@ export class Climb extends Component {
                 tag.color = alpha(C.text, 150);
                 tag.node.setPosition(half + 18, (f - floorFrom) * rowsPerFloor * CELL + 18);
             }
-            const goal = this.makeLabel('FloorTag', this.world, 26);
+            const goal = this.makeLabel('FloorTag', this.world, 26, Label.HorizontalAlign.LEFT);
             goal.string = `${floorTo}F 平台`;
-            goal.color = hex('#3a2a10');
-            goal.node.setPosition(0, top + 20);
+            goal.color = C.platform;
+            goal.node.setPosition(-half - 30, top + 64);
         }
         const entrance = this.makeLabel('FloorTag', this.world, 26);
         entrance.string = firstLevel ? '入口' : `${(floorFrom ?? 1) - 1}F 平台`;
@@ -555,8 +579,12 @@ export class Climb extends Component {
         const tremble = sim.tier !== 'safe' && this.mode === 'play' ? Math.sin(this.elapsed * 60) * 1.5 : 0;
         this.player.setPosition(this.playerX() + tremble, py);
         if (this.mode === 'transition') {
+            const travel = vs.height * 0.6;
             const t = Math.min(1, this.transSec / TRANSITION_SEC);
-            this.camY = this.transCam0 + t * t * (3 - 2 * t) * vs.height;
+            const ease = (x: number): number => x * x * (3 - 2 * x);
+            this.camY = this.nextSim
+                ? this.transCam0 + ease(t * 2) * travel / 2
+                : this.cellY(0) + this.camOffset() - travel / 2 + ease(t * 2 - 1) * travel / 2;
         } else {
             const targetCam = py + this.camOffset();
             this.camY += (targetCam - this.camY) * (1 - Math.exp(-dt * 8));
@@ -655,7 +683,7 @@ export class Climb extends Component {
             this.overlayLabel.node.setPosition(0, OVERLAY_Y);
         }
         // Top band behind the title so floor lines don't run through it.
-        h.fillColor = new Color(8, 12, 20, 170);
+        h.fillColor = new Color(8, 12, 20, 230);
         h.rect(left, top - 150, vs.width, 150);
         h.fill();
 
@@ -663,7 +691,7 @@ export class Climb extends Component {
         const floor = fallen ? sim.floorAt(Math.floor((this.fallY - CELL / 2) / CELL)) : sim.floor;
         this.floorLabel.string = floor === null ? sim.level.name : `${floor}F`;
         this.floorLabel.node.setPosition(0, top - 52);
-        const shown = this.mode === 'transition' && this.nextSim ? this.nextSim.level : sim.level;
+        const shown = sim.level;
         this.levelLabel.string = `第 ${shown.id} 關 ${shown.name} ${shown.floors.replace('-', '–')}`;
         this.levelLabel.node.setPosition(0, top - 106);
         this.timeLabel.string = formatClimbTime(sim.climbSec);
@@ -682,7 +710,7 @@ export class Climb extends Component {
         const mx = left + 30;
         const my = -220;
         const mh = 440;
-        h.fillColor = new Color(0, 0, 0, 150);
+        h.fillColor = new Color(0, 0, 0, 220);
         h.rect(mx - 4, my - 4, 28, mh + 8);
         h.fill();
         h.fillColor = sim.tier === 'crisis' ? C.riskCrisis : sim.tier === 'tense' ? C.riskTense : C.riskSafe;
@@ -697,6 +725,7 @@ export class Climb extends Component {
         }
         h.stroke();
         this.riskLabel.node.setPosition(mx + 10, my + mh + 22);
+        this.gmLabel.node.setPosition(0, top - 172);
 
         // Event icon (top-left): blinks during warning, time bar while active.
         const showIcon = kind !== null && (s.state === 'active' || Math.floor(this.elapsed * 8) % 2 === 0);
