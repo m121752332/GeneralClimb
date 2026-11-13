@@ -8,6 +8,7 @@ import { GameSession } from '../core/GameSession';
 import { formatBest, readLocalBest } from '../core/LocalBest';
 import { applyScreenFit } from '../core/ScreenFit';
 import { settings } from '../core/Settings';
+import { sound } from '../core/Sound';
 import { openLevelSelect } from '../ui/LevelSelectPanel';
 import { openSettings } from '../ui/SettingsPanel';
 import { Toast } from '../ui/Toast';
@@ -40,6 +41,7 @@ export class Home extends Component {
         this.buildCorners();
         this.toast = new Toast(this.node);
         this.syncDevMode();
+        sound().music('home');
 
         LevelLoader.load().then((cfg) => {
             this.config = cfg;
@@ -119,13 +121,13 @@ export class Home extends Component {
     private buildCorners(): void {
         // Sound on / off, pinned to the visible top-right corner.
         const size = 76;
-        const sound = makeNode('Sound', this.node, size, size);
-        const w = sound.addComponent(Widget);
+        const soundBtn = makeNode('Sound', this.node, size, size);
+        const w = soundBtn.addComponent(Widget);
         w.isAlignTop = true;
         w.isAlignRight = true;
         w.top = 24;
         w.right = 24;
-        const g = sound.addComponent(Graphics);
+        const g = soundBtn.addComponent(Graphics);
         this.drawSound = (): void => {
             const muted = settings().get().muted;
             g.clear();
@@ -149,13 +151,15 @@ export class Home extends Component {
             }
         };
         this.drawSound();
-        const btn = sound.addComponent(Button);
-        btn.target = sound;
+        const btn = soundBtn.addComponent(Button);
+        btn.target = soundBtn;
         btn.transition = Button.Transition.SCALE;
         btn.zoomScale = 0.9;
-        sound.on(Button.EventType.CLICK, () => {
+        soundBtn.on(Button.EventType.CLICK, () => {
             const muted = settings().set({ muted: !settings().get().muted }).muted;
             this.drawSound?.();
+            sound().applyVolume();
+            if (!muted) sound().play('click');
             this.toast.show(muted ? '已靜音' : '已開啟聲音', 1);
         });
 

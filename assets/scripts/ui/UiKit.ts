@@ -2,6 +2,7 @@ import {
     BlockInputEvents, Button, Color, Graphics, Label, Node, SpriteFrame, Texture2D, UIOpacity, UITransform, Vec2, Vec3,
     resources, tween,
 } from 'cc';
+import { sound } from '../core/Sound';
 
 /** Small helpers for building UI from code, so scene files stay minimal. */
 
@@ -124,7 +125,10 @@ export function makeButton(parent: Node, text: string, w: number, h: number, sty
     button.transition = Button.Transition.SCALE;
     button.zoomScale = 0.92;
     button.duration = 0.08;
-    node.on(Button.EventType.CLICK, onClick);
+    node.on(Button.EventType.CLICK, () => {
+        sound().play('click');
+        onClick();
+    });
     return { node, label, graphics };
 }
 

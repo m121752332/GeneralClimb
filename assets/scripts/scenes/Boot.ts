@@ -4,6 +4,7 @@ import type { LevelConfig } from '../config/LevelConfig';
 import { type BootSnapshot, type BootStage, STAGE_MARK, describeWeather, runStages } from '../core/BootStages';
 import { formatBest, readLocalBest } from '../core/LocalBest';
 import { applyScreenFit } from '../core/ScreenFit';
+import { AudioEngine } from '../core/Audio';
 import { settings } from '../core/Settings';
 import { STYLE, hex, loadBrandIcon, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
 import { buildBackdrop } from './HomeBackdrop';
@@ -74,7 +75,8 @@ export class Boot extends Component {
                 title: '音效',
                 run: async () => {
                     const s = settings().get();
-                    return `M4 開放 · 音量 ${Math.round(s.volume * 100)}%${s.muted ? '（靜音）' : ''}`;
+                    if (!AudioEngine.supported) return '此瀏覽器不支援音效';
+                    return `合成音效 · 音量 ${Math.round(s.volume * 100)}%${s.muted ? '（靜音）' : ''}`;
                 },
             },
             {
