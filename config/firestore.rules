@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 玩家自己的資料與每局紀錄
+    match /players/{uid}/{doc=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    // 最佳紀錄（第二版排行榜查這裡）
+    match /best/{uid} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.maxFloor is int
+        && request.resource.data.maxFloor <= 102          // 102 = 塔尖
+        && (request.resource.data.bestClearMs == null
+            || request.resource.data.bestClearMs >= 300000); // 低於 5 分鐘視為不合理，實測後調整
+    }
+  }
+}

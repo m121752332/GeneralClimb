@@ -1,0 +1,19 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "best",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "maxFloor",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "bestClearMs",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -1,0 +1,25 @@
+# Cocos Creator（專案在 game/）
+game/library/
+game/temp/
+game/local/
+game/build/
+game/native/
+game/profiles/v2/packages/
+*.meta.bak
+
+# Node
+node_modules/
+npm-debug.log*
+
+# 機密：服務帳戶金鑰與環境變數絕不 commit
+.env
+.env.*
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+
+# 系統與編輯器
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
