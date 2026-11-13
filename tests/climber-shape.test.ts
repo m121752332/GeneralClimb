@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { climberParts } from '../assets/scripts/climb/ClimberShape.ts';
 
-test('climber: six parts, well-formed buffers', () => {
+test('climber: parts with elbows and knees, well-formed buffers', () => {
     const parts = climberParts();
-    assert.deepEqual(parts.map((p) => p.name), ['Torso', 'Cape', 'ArmL', 'ArmR', 'LegL', 'LegR']);
+    assert.deepEqual(parts.map((p) => `${p.parent}/${p.name}`), [
+        'Body/Torso', 'Body/Cape', 'Body/ArmL', 'ArmL/ForearmL', 'Body/ArmR', 'ArmR/ForearmR',
+        'Body/LegL', 'LegL/ShinL', 'Body/LegR', 'LegR/ShinR',
+    ]);
     for (const p of parts) {
         const verts = p.positions.length / 3;
         assert.equal(p.positions.length % 3, 0);
@@ -29,6 +32,8 @@ test('climber: same pivots as the old block figure, so poses and the ending stil
     assert.deepEqual(byName.ArmR, [0.36, 1.2, 0]);
     assert.deepEqual(byName.LegL, [-0.15, 0.55, 0]);
     assert.deepEqual(byName.LegR, [0.15, 0.55, 0]);
+    assert.deepEqual(byName.ForearmL, [0, 0.3, 0]);
+    assert.deepEqual(byName.ShinR, [0, -0.3, 0]);
 });
 
 test('climber: head top under 2.0 units (name tag height) and the face is on -Z', () => {

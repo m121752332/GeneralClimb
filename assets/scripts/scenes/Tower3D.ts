@@ -227,9 +227,37 @@ function loadMaterial(): Promise<Material> {
 
 interface Limb {
     node: Node;
+    /** Forearm (elbow) or shin (knee). */
+    lower: Node;
     /** Swing phase sign, so opposite limbs alternate. */
     sign: number;
+    /** Which side of the body: -1 left (x < 0), +1 right. */
+    side: number;
     arm: boolean;
+}
+
+/** Limb angles in degrees: upper X / Z, lower X / Z. */
+type LimbPose = [number, number, number, number];
+
+function lerpPose(a: LimbPose, b: LimbPose, t: number): LimbPose {
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t];
+}
+
+/**
+ * Wall crawl poses for a limb on side `xs` (-1 left, +1 right). Arms are modelled pointing up
+ * and legs down; +Z spreads a left limb outward, so the side flips the sign.
+ * Arm low = elbow out at shoulder height, forearm up (a "W"); arm high = reaching up the wall.
+ * Leg up = knee drawn up and out like a frog; leg down = pushed nearly straight.
+ */
+function wallPose(arm: boolean, xs: number, raise: number): LimbPose {
+    if (arm) {
+        const low: LimbPose = [-8, -xs * 85, 0, xs * 95];
+        const high: LimbPose = [-14, -xs * 22, 0, -xs * 6];
+        return lerpPose(low, high, raise);
+    }
+    const down: LimbPose = [2, xs * 20, -4, -xs * 8];
+    const up: LimbPose = [16, xs * 72, -16, -xs * 96];
+    return lerpPose(down, up, raise);
 }
 
 export class Tower3D {
@@ -249,6 +277,9 @@ export class Tower3D {
     private cape: Node | null = null;
     private capeT = 0;
     private limbs: Limb[] = [];
+    /** Wall crawl: which arm leads the current step (+1 right, -1 left) and how far along. */
+    private climbSide = 1;
+    private climbT = 1;
     private followYaw = 0;
     private camYaw = 0;
     private playerYaw = 0;
@@ -546,9 +577,9 @@ export class Tower3D {
 
         // Robe, head and face, cape, arms and legs (facing -Z, i.e. into the wall; the camera
         // sees the back). Arms are modelled reaching up, legs hanging down, from their pivots.
-        const swing: Record<string, [number, boolean]> = {
-            ArmL: [1, true], ArmR: [-1, true], LegL: [-1, false], LegR: [1, false],
-        };
+        const swing: Record<string, number> = { ArmL: 1, ArmR: -1, LegL: -1, LegR: 1 };
+        const nodes: Record<string, Node> = { Body: this.body };
+        const uppers: [string, Node][] = [];
         for (const part of climberParts()) {
             const mb = MeshBuilder.from(part.positions, part.colors, part.indices);
             if (part.name === 'Torso') {
@@ -557,11 +588,17 @@ export class Tower3D {
             }
             const n = new Node(part.name);
             n.layer = Layers.Enum.DEFAULT;
-            this.body.addChild(n);
+            nodes[part.parent].addChild(n);
             n.setPosition(part.pivot[0], part.pivot[1], part.pivot[2]);
             this.addMesh('Mesh', mb, n);
+            nodes[part.name] = n;
             if (part.name === 'Cape') this.cape = n;
-            else this.limbs.push({ node: n, sign: swing[part.name][0], arm: swing[part.name][1] });
+            else if (part.parent === 'Body') uppers.push([part.name, n]);
+        }
+        for (const [name, n] of uppers) {
+            const arm = name.startsWith('Arm');
+            const lower = nodes[(arm ? 'Forearm' : 'Shin') + name.slice(-1)];
+            this.limbs.push({ node: n, lower, sign: swing[name], side: name.endsWith('L') ? -1 : 1, arm });
         }
     }
 
@@ -643,16 +680,41 @@ export class Tower3D {
             this.body.setRotationFromEuler(0, 0, 0);
             for (const l of this.limbs) {
                 const swing = walking ? l.sign * reach * 35 : 0;
-                if (l.arm) l.node.setRotationFromEuler(180 - swing, 0, -l.sign * 8);
-                else l.node.setRotationFromEuler(swing, 0, 0);
+                if (l.arm) {
+                    l.node.setRotationFromEuler(180 - swing, 0, -l.sign * 8);
+                    l.lower.setRotationFromEuler(walking ? -15 : -6, 0, 0);
+                } else {
+                    l.node.setRotationFromEuler(swing, 0, 0);
+                    l.lower.setRotationFromEuler(walking ? -Math.max(0, swing) * 0.9 : 0, 0, 0);
+                }
             }
         } else {
-            const lean = opts.grip ? 12 : 4;
-            this.body.setRotationFromEuler(-lean + opts.tumble * 150, 0, opts.tumble * 40);
+            // Wall: a spider-style crawl. Each step one arm reaches up the wall while the
+            // opposite knee draws up, then they swap, so a run of steps reads as hand over hand.
+            if (sim.stepT >= 0) {
+                this.climbSide = (sim.fromRow + sim.fromCol) % 2 === 0 ? 1 : -1;
+                this.climbT = sim.stepT * sim.stepT * (3 - 2 * sim.stepT);
+            } else {
+                this.climbT = 1;
+            }
+            const lead = this.climbSide;
+            const k = this.climbT;
+            const lean = opts.grip ? 14 : 9;
+            const roll = lead * (k - 0.5) * 8;
+            this.body.setRotationFromEuler(-lean + opts.tumble * 150, 0, roll + opts.tumble * 40);
+            const flail = Math.min(1, opts.tumble * 2);
+            const t = this.capeT;
             for (const l of this.limbs) {
-                const swing = l.sign * reach * 30;
-                if (l.arm) l.node.setRotationFromEuler(swing + (opts.grip ? -6 : 6), 0, -l.sign * (opts.grip ? 10 : 22));
-                else l.node.setRotationFromEuler(swing - 10, 0, l.sign * 6);
+                const xs = l.side;
+                const leads = l.arm ? xs === lead : xs === -lead;
+                let pose = wallPose(l.arm, xs, leads ? k : 1 - k);
+                if (flail > 0) {
+                    const wave = Math.sin(t * 14 + xs) * 25;
+                    const out: LimbPose = l.arm ? [10, -xs * (70 + wave), 0, xs * 20] : [20 + wave, xs * 35, -30, 0];
+                    pose = lerpPose(pose, out, flail);
+                }
+                l.node.setRotationFromEuler(pose[0], 0, pose[1]);
+                l.lower.setRotationFromEuler(pose[2], 0, pose[3]);
             }
         }
 
@@ -728,8 +790,14 @@ export class Tower3D {
         const breathe = Math.sin(t * 2) * 2;
         this.body.setRotationFromEuler(-14 + breathe, 0, 0);
         for (const l of this.limbs) {
-            if (l.arm) l.node.setRotationFromEuler(165, 0, -l.sign * 25);
-            else l.node.setRotationFromEuler(70 + Math.sin(t * 1.5 + l.sign) * 8, 0, l.sign * 6);
+            if (l.arm) {
+                l.node.setRotationFromEuler(165, 0, -l.sign * 25);
+                l.lower.setRotationFromEuler(0, 0, 0);
+            } else {
+                // Thighs forward along the ring, shins hanging over the edge, swinging a little.
+                l.node.setRotationFromEuler(80, 0, l.sign * 6);
+                l.lower.setRotationFromEuler(-80 + Math.sin(t * 1.5 + l.sign) * 14, 0, 0);
+            }
         }
         // Wind at the top: the cape streams out behind.
         this.capeT = t;

@@ -15,9 +15,16 @@
 export type RGB = readonly [number, number, number];
 type V3 = [number, number, number];
 
-/** One mesh of the figure. Arms and legs pivot at `pivot` (in the body's space). */
+export type ClimberPartName = 'Torso' | 'Cape' | 'ArmL' | 'ArmR' | 'LegL' | 'LegR'
+    | 'ForearmL' | 'ForearmR' | 'ShinL' | 'ShinR';
+
+/**
+ * One mesh of the figure. Each part pivots at `pivot`, given in its parent's space: the body
+ * for arms, legs and cape; the upper arm / thigh for forearms (elbow) and shins (knee).
+ */
 export interface ClimberPart {
-    name: 'Torso' | 'Cape' | 'ArmL' | 'ArmR' | 'LegL' | 'LegR';
+    name: ClimberPartName;
+    parent: 'Body' | 'ArmL' | 'ArmR' | 'LegL' | 'LegR';
     pivot: V3;
     positions: number[];
     /** RGBA per vertex, 0..1, lighting already applied. */
@@ -163,8 +170,8 @@ class PartBuilder {
         this.flat(p(-1, -1, -1), p(1, -1, -1), p(1, -1, 1), p(-1, -1, 1), col);
     }
 
-    part(name: ClimberPart['name'], pivot: V3): ClimberPart {
-        return { name, pivot, positions: this.positions, colors: this.colors, indices: this.indices };
+    part(name: ClimberPartName, pivot: V3, parent: ClimberPart['parent'] = 'Body'): ClimberPart {
+        return { name, parent, pivot, positions: this.positions, colors: this.colors, indices: this.indices };
     }
 }
 
@@ -298,31 +305,43 @@ function buildCape(): ClimberPart {
     return b.part('Cape', [0, 1.21, 0.14]);
 }
 
-function buildArm(name: 'ArmL' | 'ArmR', x: number): ClimberPart {
+/** Elbow and knee, measured from the shoulder / hip along the limb. */
+export const ELBOW = 0.3;
+export const KNEE = 0.3;
+
+/** Upper arm, modelled reaching up (+Y) from the shoulder pivot; the forearm hangs off the elbow. */
+function buildArm(name: 'ArmL' | 'ArmR', x: number): ClimberPart[] {
     const C = CLIMBER_COL;
-    const b = new PartBuilder();
-    // Modelled reaching up (+Y) from the shoulder pivot.
-    b.ellipsoid([0, 0.03, 0], [0.12, 0.095, 0.12], C.gold, 8, 6, (d) => d[1] > -0.35);
-    b.lathe(0, 0, [
-        [0.088, 0.0, 0.08, 0.42, C.robe],
-        [0.09, 0.42, 0.09, 0.5, C.gold],
+    const up = new PartBuilder();
+    up.ellipsoid([0, 0.03, 0], [0.12, 0.095, 0.12], C.gold, 8, 6);
+    up.lathe(0, 0, [[0.088, 0.0, 0.083, ELBOW + 0.02, C.robe]], 8);
+    const fore = new PartBuilder();
+    fore.ellipsoid([0, 0, 0], [0.083, 0.05, 0.083], C.robe, 8, 4);
+    fore.lathe(0, 0, [
+        [0.083, 0.0, 0.08, 0.42 - ELBOW, C.robe],
+        [0.09, 0.42 - ELBOW, 0.09, 0.5 - ELBOW, C.gold],
     ], 8);
-    b.ellipsoid([0, 0.585, 0], [0.068, 0.082, 0.062], C.skin, 8, 6);
-    return b.part(name, [x, 1.2, 0]);
+    fore.ellipsoid([0, 0.585 - ELBOW, 0], [0.068, 0.082, 0.062], C.skin, 8, 6);
+    const lower = name === 'ArmL' ? 'ForearmL' : 'ForearmR';
+    return [up.part(name, [x, 1.2, 0]), fore.part(lower, [0, ELBOW, 0], name)];
 }
 
-function buildLeg(name: 'LegL' | 'LegR', x: number): ClimberPart {
+/** Thigh, modelled hanging down (-Y) from the hip pivot; the shin and boot hang off the knee. */
+function buildLeg(name: 'LegL' | 'LegR', x: number): ClimberPart[] {
     const C = CLIMBER_COL;
-    const b = new PartBuilder();
-    // Modelled hanging down (-Y) from the hip pivot; toes point -Z.
-    b.lathe(0, 0, [
-        [0.1, 0.0, 0.088, -0.36, C.pants],
-        [0.094, -0.36, 0.094, -0.41, C.gold],
-        [0.09, -0.41, 0.086, -0.58, C.boot],
+    const up = new PartBuilder();
+    up.lathe(0, 0, [[0.1, 0.0, 0.094, -KNEE - 0.02, C.pants]], 8);
+    const shin = new PartBuilder();
+    shin.ellipsoid([0, 0, 0], [0.094, 0.05, 0.094], C.pants, 8, 4);
+    shin.lathe(0, 0, [
+        [0.094, 0, 0.088, -0.36 + KNEE, C.pants],
+        [0.094, -0.36 + KNEE, 0.094, -0.41 + KNEE, C.gold],
+        [0.09, -0.41 + KNEE, 0.086, -0.58 + KNEE, C.boot],
     ], 8);
-    b.ellipsoid([0, -0.585, -0.06], [0.09, 0.065, 0.15], C.boot, 8, 6);
-    b.box([0, -0.64, -0.055], [0.17, 0.035, 0.29], C.sole);
-    return b.part(name, [x, 0.55, 0]);
+    shin.ellipsoid([0, -0.585 + KNEE, -0.06], [0.09, 0.065, 0.15], C.boot, 8, 6);
+    shin.box([0, -0.64 + KNEE, -0.055], [0.17, 0.035, 0.29], C.sole);
+    const lower = name === 'LegL' ? 'ShinL' : 'ShinR';
+    return [up.part(name, [x, 0.55, 0]), shin.part(lower, [0, -KNEE, 0], name)];
 }
 
 /** All parts of the climber. Deterministic; built once per scene. */
@@ -330,9 +349,9 @@ export function climberParts(): ClimberPart[] {
     return [
         buildTorso(),
         buildCape(),
-        buildArm('ArmL', -0.36),
-        buildArm('ArmR', 0.36),
-        buildLeg('LegL', -0.15),
-        buildLeg('LegR', 0.15),
+        ...buildArm('ArmL', -0.36),
+        ...buildArm('ArmR', 0.36),
+        ...buildLeg('LegL', -0.15),
+        ...buildLeg('LegR', 0.15),
     ];
 }
