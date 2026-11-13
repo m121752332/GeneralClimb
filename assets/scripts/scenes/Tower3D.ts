@@ -31,7 +31,9 @@ export const ENDING_SEC = 10;
 /** Grid quads float just off the facade to avoid z-fighting. */
 const GRID_OUT = 0.04;
 /** Half width of a pillar between two panes, in columns. */
-const PILLAR_HALF = 0.06;
+const PILLAR_HALF = 0.025;
+/** Half width of the wide pilasters at the corners and where safe glass meets danger glass. */
+const PILASTER_HALF = 0.09;
 /** Glass bays per face on the floors outside the current level. */
 const FACADE_BAYS = 8;
 /** Horizontal field of view, so a face fills the width on any phone. */
@@ -73,8 +75,9 @@ const COL = {
     spire: hex('#d8dcdc'),
     plaza: hex('#b8b2a6'),
     mat: hex('#24474a'),
-    safe: hex('#2c8a90'),
-    safeHigh: hex('#86d6da'),
+    // Same dark teal as the rest of the tower, a touch brighter, so the level blends in.
+    safe: hex('#20666b'),
+    safeHigh: hex('#5cb0b4'),
     danger: hex('#a8443e'),
     dangerHigh: hex('#ea8c82'),
     obstacle: hex('#5a5a5a'),
@@ -435,13 +438,17 @@ export class Tower3D {
         for (let r = this.rowsPerFloor; r <= wall.rows; r += this.rowsPerFloor) {
             const y = ry(r);
             const top = r === wall.rows;
-            const t = top ? 0.12 : 0.07;
-            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - t, y + t, GRID_OUT + 0.04, top ? COL.goal : COL.frame);
+            const t = top ? 0.12 : 0.1;
+            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - t, y + t, GRID_OUT + 0.09, top ? COL.goal : COL.pillar);
         }
-        // Pillars between the panes, standing out of the glass; the corner posts are wider.
+        // Thin frames between the panes; wide pilasters at the corners and where safe glass
+        // meets danger glass (the climber's natural route edge), standing out of the glass.
         for (let c = 0; c < wall.ring; c++) {
             const corner = wall.faces > 1 && c % wall.cols === 0;
-            facePillar(mb, S, wall.cols, wall.faces, c, corner ? PILLAR_HALF * 2 : PILLAR_HALF, ry(0), ry(wall.rows), GRID_OUT, GRID_OUT + 0.14, COL.pillar);
+            const edge = zoneOf(wall, c - 1, 0) !== zoneOf(wall, c, 0);
+            const wide = corner || edge;
+            facePillar(mb, S, wall.cols, wall.faces, c, wide ? PILASTER_HALF : PILLAR_HALF, ry(0), ry(wall.rows),
+                GRID_OUT, GRID_OUT + (wide ? 0.18 : 0.06), COL.pillar);
         }
         // Obstacles: vents sticking out of the glass.
         for (const key of wall.obstacles) {

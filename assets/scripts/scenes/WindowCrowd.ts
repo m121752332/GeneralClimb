@@ -20,6 +20,12 @@ const OUT_BODY = 0.075;
 const OUT_DETAIL = 0.085;
 const OUT_ARM = 0.095;
 
+/**
+ * People are drawn bigger than life (so faces read on a phone) and stand close to the glass:
+ * scaled by FIG_SCALE about the floor and pushed down, so the legs drop below the sill and
+ * we see them from the thighs up, like someone leaning on the window.
+ */
+const FIG_SCALE = 1.4;
 const SHOULDER_V = 1.55;
 const SHOULDER_U = 0.27;
 const ARM_LEN = 0.55;
@@ -48,8 +54,8 @@ function tinted(c: Color): Color {
 }
 
 const C = {
-    room: hex('#6fb4b2'),
-    ceiling: hex('#9fd2cc'),
+    room: hex('#f1e6cc'),
+    ceiling: hex('#fff6e2'),
     lamp: hex('#fff2c8'),
     pants: hex('#3a3f5c'),
     collar: hex('#f4f4f2'),
@@ -131,8 +137,10 @@ export class WindowCrowd {
             const colW = (2 * halfAt(this.sections, yb + floorH / 2)) / wall.cols;
             // The pane between two pillars (PILLAR_HALF = 0.06 of a column on each side).
             const half = colW * 0.43;
-            this.bakeFigure(rect, P, mb, spot, half, floorH);
-            this.actors.push(this.makeActor(spot, P(0, SHOULDER_V, OUT_ARM), center.yaw));
+            const shift = 2.1 * FIG_SCALE - (floorH - 0.2);
+            const fig = (v: number): number => v * FIG_SCALE - shift;
+            this.bakeFigure(rect, P, mb, spot, half, floorH, fig);
+            this.actors.push(this.makeActor(spot, P(0, fig(SHOULDER_V), OUT_ARM), center.yaw));
         }
         this.meshes.push(this.makeMesh('Crowd', mb, this.node));
     }
@@ -140,12 +148,23 @@ export class WindowCrowd {
     private bakeFigure(
         rect: (u0: number, v0: number, u1: number, v1: number, w: number, c: Color) => void,
         P: (u: number, v: number, w: number) => V3, mb: MeshBuilder, spot: NpcSpot, half: number, floorH: number,
+        fig: (v: number) => number,
     ): void {
         const top = floorH - 0.08;
         // A lit room behind the floor-to-ceiling glass: back wall, ceiling band, two downlights.
-        rect(-half, 0.08, half, top, OUT_WINDOW, tinted(C.room));
-        rect(-half, top - 0.22, half, top, OUT_WINDOW + 0.004, tinted(C.ceiling));
-        for (const u of [-half * 0.5, half * 0.5]) rect(u - 0.1, top - 0.16, u + 0.1, top - 0.1, OUT_WINDOW + 0.008, C.lamp);
+        // Warm white, so a lit room stands out against the teal glass.
+        const warm = (c: Color): Color => Color.lerp(new Color(), c, GLASS_TINT, 0.08);
+        rect(-half, 0.08, half, top, OUT_WINDOW, warm(C.room));
+        rect(-half, top - 0.24, half, top, OUT_WINDOW + 0.004, warm(C.ceiling));
+        for (const u of [-half * 0.5, half * 0.5]) rect(u - 0.16, top - 0.17, u + 0.16, top - 0.09, OUT_WINDOW + 0.008, C.lamp);
+        // The figure, scaled about the floor; parts that end below the sill are cut off there.
+        const SILL = 0.1;
+        const K = FIG_SCALE;
+        const room = rect;
+        rect = (u0, v0, u1, v1, w, c) => {
+            const a = Math.max(SILL, fig(v0)), b = fig(v1);
+            if (b > a) room(u0 * K, a, u1 * K, b, w, c);
+        };
         const skin = tinted(SKIN[spot.palette % SKIN.length]);
         const shirt = tinted(SHIRT[spot.kind][spot.palette % 4]);
         // Legs, torso.
@@ -158,7 +177,7 @@ export class WindowCrowd {
         }
         // Neck and round head (octagon fan), hair, eyes, mouth. Faces are simple, not a real person (ADR-08).
         rect(-0.05, 1.6, 0.05, 1.68, OUT_BODY, skin);
-        const hc = 1.83, hr = 0.18, n = 10;
+        const hc = fig(1.83), hr = 0.18 * K, n = 12;
         for (let i = 0; i < n; i++) {
             const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2;
             const c = P(0, hc, OUT_BODY);
@@ -182,6 +201,7 @@ export class WindowCrowd {
         this.node!.addChild(root);
         root.setPosition(at[0], at[1], at[2]);
         root.setRotationFromEuler(0, (yaw * 180) / Math.PI, 0);
+        root.setScale(FIG_SCALE, FIG_SCALE, FIG_SCALE);
         const skin = tinted(SKIN[spot.palette % SKIN.length]);
         const shirt = tinted(SHIRT[spot.kind][spot.palette % 4]);
         const arm = (side: number): Node => {
