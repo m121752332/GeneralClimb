@@ -165,7 +165,7 @@ export function openModal(root: Node, title: string, w: number, h: number, onClo
     const panel = makeNode('Panel', overlay, w, h);
     panel.addComponent(BlockInputEvents);
     const g = panel.addComponent(Graphics);
-    roundRect(g, w, h, 28, hex('#141a36', 248), hex('#8fa6ff', 220), 3);
+    roundRect(g, w, h, 28, hex('#141a36'), hex('#8fa6ff', 220), 3);
     g.roundRect(-w / 2 + 3, h / 2 - 96, w - 6, 93, 26);
     g.fillColor = hex('#1f2a5c');
     g.fill();

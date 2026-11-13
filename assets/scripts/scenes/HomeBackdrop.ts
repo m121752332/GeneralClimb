@@ -59,7 +59,7 @@ function drawSky(parent: Node): void {
 
 function drawMoon(parent: Node): void {
     const g = makeNode('Moon', parent, 0, 0, -250, 470).addComponent(Graphics);
-    for (const [r, a] of [[110, 14], [80, 22], [58, 40]] as const) {
+    for (const [r, a] of [[96, 8], [72, 14], [54, 26]] as const) {
         g.circle(0, 0, r);
         g.fillColor = new Color(255, 236, 190, a);
         g.fill();
@@ -166,8 +166,8 @@ function drawTower(parent: Node): void {
     };
 
     // Podium and lower trunk.
-    shape(-700, 260, -440, 210);
-    windows(-700, -440, 210);
+    shape(-HALF_H, 260, -440, 210);
+    windows(-900, -440, 210);
     shape(-440, 196, -380, 176);
     windows(-440, -380, 176);
 
