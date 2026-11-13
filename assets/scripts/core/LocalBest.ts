@@ -1,0 +1,53 @@
+/**
+ * Local best record for players who are not signed in (GDD §8: same shape as Firestore `best/{uid}`).
+ * Pure TypeScript (no `cc`). The result screen writes it; Home only reads it.
+ */
+import type { StorageLike } from './Settings';
+
+export const BEST_KEY = 'gcr.best.v1';
+/** GDD §8: maxFloor 102 means the spire tip. */
+export const SPIRE_TIP_FLOOR = 102;
+
+export interface LocalBest {
+    maxFloor: number;
+    bestClearMs: number | null;
+}
+
+export function parseLocalBest(text: string | null): LocalBest | null {
+    if (!text) return null;
+    try {
+        const raw = JSON.parse(text) as Record<string, unknown> | null;
+        const maxFloor = raw?.maxFloor;
+        if (typeof maxFloor !== 'number' || !Number.isInteger(maxFloor) || maxFloor < 1 || maxFloor > SPIRE_TIP_FLOOR) {
+            return null;
+        }
+        const ms = raw?.bestClearMs;
+        return { maxFloor, bestClearMs: typeof ms === 'number' && ms > 0 ? ms : null };
+    } catch {
+        return null;
+    }
+}
+
+function formatDuration(ms: number): string {
+    const total = Math.floor(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+/** Home screen text, e.g. 「最佳紀錄：47F」 or 「最佳紀錄：登頂 12:34」. */
+export function formatBest(best: LocalBest | null): string {
+    if (!best) return '最佳紀錄：尚無紀錄';
+    if (best.maxFloor >= SPIRE_TIP_FLOOR) {
+        return best.bestClearMs ? `最佳紀錄：登頂 ${formatDuration(best.bestClearMs)}` : '最佳紀錄：登頂';
+    }
+    return `最佳紀錄：${best.maxFloor}F`;
+}
+
+export function readLocalBest(storage: StorageLike | null): LocalBest | null {
+    try {
+        return parseLocalBest(storage ? storage.getItem(BEST_KEY) : null);
+    } catch {
+        return null;
+    }
+}

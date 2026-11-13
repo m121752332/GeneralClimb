@@ -1,10 +1,14 @@
-import { _decorator, Color, Component, Label, Node } from 'cc';
+import { _decorator, Color, Component, director, Label, Node } from 'cc';
 import { LevelLoader } from '../config/LevelLoader';
 import { applyScreenFit } from '../core/ScreenFit';
 
 const { ccclass } = _decorator;
 
-/** M0 boot scene: fit the screen, load levels.json, show the result. */
+const HOME_SCENE = 'Home';
+/** How long the "levels.json vN OK" status stays up before Home loads. */
+const SHOW_STATUS_SEC = 0.8;
+
+/** Boot scene: fit the screen, load and validate levels.json, then go to Home. Errors stay on screen. */
 @ccclass('Boot')
 export class Boot extends Component {
     start(): void {
@@ -13,7 +17,10 @@ export class Boot extends Component {
         status.string = '霍將軍爬101大樓\n載入中…';
 
         LevelLoader.load().then((cfg) => {
-            status.string = `霍將軍爬101大樓\nlevels.json v${cfg.version} OK\n${cfg.levels.length} 關`;
+            status.string = `霍將軍爬101大樓\nlevels.json v${cfg.version} OK\n${cfg.levels.length} 關\n載入完成`;
+            // tools/smoke-site.mjs reads this, since the label is gone once Home loads.
+            (globalThis as { __GC_BOOT?: string }).__GC_BOOT = status.string;
+            this.scheduleOnce(() => director.loadScene(HOME_SCENE), SHOW_STATUS_SEC);
         }).catch((err: unknown) => {
             console.error(err);
             status.color = Color.RED;
