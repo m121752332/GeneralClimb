@@ -1,10 +1,10 @@
-# Cocos Creator（專案在 game/）
-game/library/
-game/temp/
-game/local/
-game/build/
-game/native/
-game/profiles/v2/packages/
+# Cocos Creator（專案在 repo 根目錄）
+/library/
+/temp/
+/local/
+/build/
+/native/
+/profiles/
 *.meta.bak
 
 # Node

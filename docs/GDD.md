@@ -111,6 +111,10 @@ update(dt: number) {
 | 左下 | 虛擬搖桿 | 觸控裝置才顯示 |
 | 邊緣 | 危機紅暈 | 風險 ≥ 40 淡紅，≥ 70 閃爍 |
 
+**螢幕適配**：比 9:16 更長的螢幕固定寬度（上下多露出畫面），更寬的螢幕固定高度（左右多露出畫面）；HUD 貼齊可視範圍邊緣。
+
+**引擎設定**：功能裁剪只保留 2D、UI、Graphics、Mask、動畫、Tween、音效、2D 粒子、Profiler；像素貼圖 Filter Mode 用 Nearest。
+
 設定頁：音量、震動、閃光效果開關、搖桿大小。
 
 ## 7. 各畫面流程
@@ -130,7 +134,7 @@ update(dt: number) {
 
 ## 8. 資料設計
 
-- 數值：`config/levels.json`（Cocos 專案內為 `game/assets/resources/config/levels.json`）
+- 數值：`config/levels.json`（Cocos 專案內為 `assets/resources/config/levels.json`）
 - Firestore：
 
 | 集合 / 文件 | 欄位 | 說明 |

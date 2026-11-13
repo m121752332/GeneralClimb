@@ -16,7 +16,8 @@
 | --- | --- |
 | `docs/` | ADR、GDD、流程圖 |
 | `config/` | `levels.json`（數值）、Firestore 規則與索引 |
-| `game/` | Cocos Creator 專案（用 Cocos Dashboard 建立） |
+| `assets/`、`settings/`、`package.json` | Cocos Creator 3.8.8 專案（repo 根目錄即專案，用 Cocos Dashboard 匯入） |
+| `tests/`、`tools/` | 單元測試、建置與發布腳本 |
 | `site/` | Web Mobile 建置輸出，push 後發布到 GitHub Pages |
 
 ## 素材

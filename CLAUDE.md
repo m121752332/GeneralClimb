@@ -26,15 +26,19 @@ GeneralClimb/
 ├─ CLAUDE.md
 ├─ README.md
 ├─ docs/            ADR.md、GDD.md、flowchart.html
-├─ config/          levels.json（數值唯一來源）、firestore.rules、firestore.indexes.json
-├─ game/            Cocos Creator 專案（尚未建立，見「下一步」）
+├─ config/          levels.json（種子副本）、firestore.rules、firestore.indexes.json
+├─ package.json     Cocos 專案資訊 + npm scripts（test / build:web / publish:site / sync:levels）
+├─ assets/          Cocos 專案內容：scenes/、scripts/、resources/config/levels.json
+├─ settings/        Cocos 專案設定（設計解析度、功能裁剪）
+├─ tests/           node --test 單元測試（只測不依賴 cc 的純 TS）
+├─ tools/           建置與發布腳本、Web Mobile 建置設定
 ├─ site/            Web Mobile 建置輸出，push 後由 Actions 發布到 Pages
 └─ .github/workflows/deploy-pages.yml
 ```
 
 ## 開發規則
 1. **數值不寫死**：所有可調數值（速度、風險、事件計時、關卡寬度、強風機率）只能在 `levels.json`。
-   Cocos 專案建立後，以 `game/assets/resources/config/levels.json` 為準，`config/levels.json` 只是種子副本，兩者保持一致。
+   以 `assets/resources/config/levels.json` 為準，`config/levels.json` 只是種子副本，兩者保持一致（`npm test` 會檢查，`npm run sync:levels` 由種子覆蓋）。
 2. **一次只有一個危機事件**（ADR-04）：事件進行中到期的事件排隊，前一個結束 4 秒後才觸發；強風判定撞到其他事件就跳過。
 3. 計時只算「攀爬中」，過場、暫停、墜落動畫不計；墜落重來全部歸零。
 4. 事件與機率一律用本局**種子亂數**，種子要寫進成績，方便重現。
@@ -46,12 +50,17 @@ GeneralClimb/
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService
 
+## Cocos 專案位置與指令
+- **repo 根目錄就是 Cocos Creator 3.8.8 專案**（不是 `game/` 子資料夾）。在 Cocos Dashboard 用「匯入」選 `D:\GITLocal\GeneralClimb`，不要用「新建」（會多一層資料夾）。
+- 設計解析度 720 × 1280；`assets/scripts/core/ScreenFit.ts` 依螢幕比例切換 FIXED_WIDTH / FIXED_HEIGHT。
+- 功能裁剪只留 2D 需要的模組（`settings/v2/packages/engine.json`）；要用物理、Spine、TiledMap、RichText 等再打開。
+- 像素素材匯入後 Filter Mode 一律設 Nearest。
+- `npm test`：單元測試。`npm run build:web`：CLI 建置到 `build/web-mobile`（先關編輯器）。`npm run publish:site`：覆蓋 `site/`。
+
 ## 下一步（M0 專案骨架）
-1. 使用者用 **Cocos Dashboard** 在 `D:\GITLocal\GeneralClimb\game` 建立 3.8 LTS 空白 2D 專案（Cocos 會自建資料夾，建立前 `game/` 不要存在）。
-2. 建立後：把 `config/levels.json` 複製到 `game/assets/resources/config/levels.json`，寫 `LevelLoader` 讀取並驗證。
-3. 設定 Web Mobile 建置輸出，寫一個腳本把 `game/build/web-mobile` 複製到 `site/`。
-4. 建 GitHub repo、啟用 Pages（Source：GitHub Actions），push 後確認手機能開。
-5. 接著做 M1：第 1 關 + 第 6 關、攀爬／抓牢、風險值、三種事件與左上圖示、墜落重來（色塊素材）。
+1. ~~建立 Cocos 專案、LevelLoader、建置與發布腳本~~（完成）
+2. 建 GitHub repo、啟用 Pages（Source：GitHub Actions），push 後確認手機能開。
+3. 接著做 M1：第 1 關 + 第 6 關、攀爬／抓牢、風險值、三種事件與左上圖示、墜落重來（色塊素材）。
 
 ## 待確認
 - GitHub Actions 無法在雲端跑 Cocos 編輯器建置，目前採「本機建置 → 提交 `site/` → Actions 發布」。若要全自動，需自架 runner。

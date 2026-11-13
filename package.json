@@ -1,0 +1,15 @@
+{
+  "name": "general-climb",
+  "uuid": "626ea7c3-c766-4d83-8196-4ede3ac2b616",
+  "creator": {
+    "version": "3.8.8"
+  },
+  "private": true,
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "sync:levels": "node tools/sync-levels.mjs",
+    "build:web": "node tools/build-web.mjs",
+    "publish:site": "node tools/publish-site.mjs",
+    "serve": "node tools/serve.mjs"
+  }
+}
