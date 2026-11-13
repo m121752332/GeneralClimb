@@ -1,6 +1,31 @@
-import { BlockInputEvents, Button, Color, Graphics, Label, Node, UIOpacity, UITransform, Vec2, Vec3, tween } from 'cc';
+import {
+    BlockInputEvents, Button, Color, Graphics, Label, Node, SpriteFrame, Texture2D, UIOpacity, UITransform, Vec2, Vec3,
+    resources, tween,
+} from 'cc';
 
 /** Small helpers for building UI from code, so scene files stay minimal. */
+
+/** The GCR logo shown on Home. Boot preloads it so Home can show it on its first frame. */
+export const BRAND_ICON_PATH = 'branding/gcr-icon/spriteFrame';
+
+function prepareIcon(sf: SpriteFrame): SpriteFrame {
+    // ADR / Agents.md: imported pixel art uses Nearest filtering.
+    sf.texture.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
+    return sf;
+}
+
+/** The logo if it is already loaded (Boot preloads it), else null. */
+export function cachedBrandIcon(): SpriteFrame | null {
+    const sf = resources.get(BRAND_ICON_PATH, SpriteFrame);
+    return sf ? prepareIcon(sf) : null;
+}
+
+/** Loads the logo (from the cache when Boot already did). */
+export function loadBrandIcon(): Promise<SpriteFrame> {
+    return new Promise((resolve, reject) => {
+        resources.load(BRAND_ICON_PATH, SpriteFrame, (err, sf) => (err ? reject(err) : resolve(prepareIcon(sf))));
+    });
+}
 
 export function hex(code: string, alpha = 255): Color {
     const c = new Color();

@@ -1,6 +1,6 @@
 import {
-    _decorator, Button, Color, Component, Graphics, Label, Mask, Node, Sprite, SpriteFrame, Texture2D,
-    UITransform, Widget, assetManager, director, resources,
+    _decorator, Button, Color, Component, Graphics, Label, Mask, Node, Sprite, SpriteFrame,
+    UITransform, Widget, assetManager, director,
 } from 'cc';
 import { LevelLoader } from '../config/LevelLoader';
 import type { LevelConfig } from '../config/LevelConfig';
@@ -11,13 +11,12 @@ import { settings } from '../core/Settings';
 import { openLevelSelect } from '../ui/LevelSelectPanel';
 import { openSettings } from '../ui/SettingsPanel';
 import { Toast } from '../ui/Toast';
-import { STYLE, hex, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
+import { STYLE, cachedBrandIcon, hex, loadBrandIcon, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
 import { buildBackdrop } from './HomeBackdrop';
 
 const { ccclass } = _decorator;
 
 const CLIMB_SCENE = 'Climb';
-const ICON_PATH = 'branding/gcr-icon/spriteFrame';
 const ICON_SIZE = 144;
 
 /** Main menu (GDD §7): title, start, level select, practice, settings, sign-in, best record. */
@@ -64,18 +63,17 @@ export class Home extends Component {
         shape.roundRect(-ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE, ICON_SIZE, 24);
         shape.fill();
         const art = makeNode('Art', clip, ICON_SIZE, ICON_SIZE);
-        resources.load(ICON_PATH, SpriteFrame, (err, sf) => {
-            if (err || !art.isValid) {
-                if (err) console.warn('GCR icon not loaded', err);
-                return;
-            }
-            // ADR / Agents.md: imported pixel art uses Nearest filtering.
-            sf.texture.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
+        const show = (sf: SpriteFrame): void => {
+            if (!art.isValid) return;
             const sprite = art.addComponent(Sprite);
             sprite.sizeMode = Sprite.SizeMode.CUSTOM;
             sprite.spriteFrame = sf;
             art.getComponent(UITransform)!.setContentSize(ICON_SIZE, ICON_SIZE);
-        });
+        };
+        // Boot preloads the logo, so it is normally drawn on the first frame instead of popping in.
+        const cached = cachedBrandIcon();
+        if (cached) show(cached);
+        else loadBrandIcon().then(show).catch((err: unknown) => console.warn('GCR icon not loaded', err));
 
         makeLabel(this.node, '霍將軍爬101大樓', 68, Color.WHITE, {
             y: 375, bold: true, outline: hex('#2a0d3a'), outlineWidth: 5, shadow: hex('#ff5a3c', 200),
