@@ -277,12 +277,30 @@ export class AudioEngine {
         this.track = id;
         if (this.timer !== null) clearInterval(this.timer);
         this.timer = null;
+        this.cutMusic();
         if (!id) return;
         const ctx = this.ensure();
         if (!ctx) return;
         this.noteIndex = 0;
         this.nextNoteTime = ctx.currentTime + 0.1;
         this.timer = setInterval(() => this.tick(), TICK_MS);
+    }
+
+    /**
+     * Notes already handed to Web Audio keep playing after the scheduler stops (a bass note
+     * lasts most of a bar), so fade the old music bus out and start a fresh one.
+     */
+    private cutMusic(): void {
+        const ctx = this.ctx;
+        const old = this.musicBus;
+        if (!ctx || !old) return;
+        const t = ctx.currentTime;
+        old.gain.setValueAtTime(old.gain.value, t);
+        old.gain.linearRampToValueAtTime(0, t + 0.05);
+        setTimeout(() => old.disconnect(), 200);
+        this.musicBus = ctx.createGain();
+        this.musicBus.connect(ctx.destination);
+        this.applyVolume();
     }
 
     private tick(): void {
@@ -297,8 +315,16 @@ export class AudioEngine {
         const tr = TRACKS[this.track];
         const step = eighthSec(tr.bpm);
         if (this.nextNoteTime < ctx.currentTime) this.nextNoteTime = ctx.currentTime + 0.05;
+        const s = this.volume.get();
+        const silent = masterGain(s.volume, s.muted) === 0;
         while (this.nextNoteTime < ctx.currentTime + LOOKAHEAD_SEC) {
             const i = this.noteIndex % tr.melody.length;
+            // Muted: keep the clock moving but build no nodes.
+            if (silent) {
+                this.nextNoteTime += step;
+                this.noteIndex++;
+                continue;
+            }
             const n = tr.melody[i];
             if (n !== null) {
                 this.tone({ at: 0, dur: step * 0.9, wave: 'square', freq: semitone(tr.root, n), gain: tr.melodyGain }, this.nextNoteTime, this.musicBus!);

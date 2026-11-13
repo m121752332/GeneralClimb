@@ -254,7 +254,7 @@ export class Climb extends Component {
             this.hideOverlay();
         }
         if (this.mode === 'play') {
-            const before = { stepping: sim.stepping, gripping: sim.gripping, event: sim.scheduler.state };
+            const before = { stepping: sim.stepping, stepT: sim.stepT, gripping: sim.gripping, event: sim.scheduler.state };
             sim.update(dt, dir);
             this.playSimSounds(sim, before);
             if (sim.phase === 'fallen') this.beginFall();
@@ -270,9 +270,10 @@ export class Climb extends Component {
     }
 
     /** Effects for what changed during this frame's update (GDD §9 sounds, M4). */
-    private playSimSounds(sim: ClimbSim, before: { stepping: boolean; gripping: boolean; event: string }): void {
+    private playSimSounds(sim: ClimbSim, before: { stepping: boolean; stepT: number; gripping: boolean; event: string }): void {
         const sfx = sound();
-        if (sim.stepping && !before.stepping) sfx.play('step');
+        // A new cell: starting from rest, or the next step began while holding the key (stepT wrapped).
+        if (sim.stepping && (!before.stepping || sim.stepT < before.stepT)) sfx.play('step');
         else if (sim.gripping && !before.gripping) sfx.play('grip');
         const sched = sim.scheduler;
         if (sched.state === 'warning' && before.event !== 'warning' && sched.kind) {
