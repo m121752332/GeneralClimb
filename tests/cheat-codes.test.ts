@@ -27,10 +27,10 @@ test('brackets are not part of a code; anything else is unknown, blank input is 
     assert.equal(normalizeCheat(' rungm '), 'RUNGM');
 });
 
-test('level access: only level 1 without dev mode; dev mode opens floor levels but not the spire', () => {
+test('level access: only level 1 without dev mode; dev mode opens every level including the spire', () => {
     const levels = parseLevelConfig(JSON.parse(readFileSync(new URL('../assets/resources/config/levels.json', import.meta.url), 'utf8'))).levels;
     const normal = levels.map((l, i) => levelAccess(l, i, false));
     assert.deepEqual(normal, ['open', ...Array(13).fill('locked')]);
     const dev = levels.map((l, i) => levelAccess(l, i, true));
-    assert.deepEqual(dev, [...Array(12).fill('open'), 'spire', 'spire']);
+    assert.deepEqual(dev, Array(14).fill('open'));
 });

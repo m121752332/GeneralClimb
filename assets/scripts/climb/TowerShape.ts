@@ -143,3 +143,53 @@ export function angleDelta(a: number, b: number): number {
     if (d <= -Math.PI) d += 2 * Math.PI;
     return d;
 }
+
+// ---------------------------------------------------------------- crown and spire
+
+/** Crown above 101F, bottom to top: [height, half width] of each stepped block. */
+export const CROWN: ReadonlyArray<readonly [number, number]> = [[2.4, 3.7], [2.0, 2.7], [1.6, 1.8]];
+/** Spire radius where the ladder starts and where it ends (top of level 14). */
+export const SPIRE_HALF: readonly [number, number] = [1.0, 0.45];
+/** Needle above the summit ring. */
+export const SPIRE_TIP = 6;
+
+/** Top of the crown: the roof platform where level 13 (the ladder) starts. */
+export function crownTopY(rowsPerFloor: number): number {
+    return roofY(rowsPerFloor) + CROWN.reduce((h, [dh]) => h + dh, 0);
+}
+
+/** Top of the ladder: the summit ring (the end of level 14). */
+export function summitY(rowsPerFloor: number, ladderRows: number, spireLevels = 2): number {
+    return crownTopY(rowsPerFloor) + spireLevels * ladderRows * ROW_H;
+}
+
+/**
+ * Half width above the roof (crown blocks, then the tapering spire), or null below it,
+ * where the sections apply.
+ */
+export function spireHalfAt(rowsPerFloor: number, ladderRows: number, y: number): number | null {
+    let y0 = roofY(rowsPerFloor);
+    if (y < y0) return null;
+    for (const [h, half] of CROWN) {
+        if (y < y0 + h) return half;
+        y0 += h;
+    }
+    const top = summitY(rowsPerFloor, ladderRows);
+    if (y <= top) return SPIRE_HALF[0] + (SPIRE_HALF[1] - SPIRE_HALF[0]) * ((y - y0) / (top - y0));
+    return Math.max(0.04, SPIRE_HALF[1] * (1 - (y - top) / SPIRE_TIP));
+}
+
+/** Whole-building half width at y (sections, crown, spire). */
+export function profileHalf(sections: readonly Section[], rowsPerFloor: number, ladderRows: number, y: number): number {
+    return spireHalfAt(rowsPerFloor, ladderRows, y) ?? halfAt(sections, y);
+}
+
+/**
+ * World y of row 0 of a level: floor levels sit on their floors, spire levels stack up
+ * the ladder from the crown top ("spire-lower" first, then "spire-upper").
+ */
+export function levelBaseY(level: { floorFrom: number | null; floors: string }, rowsPerFloor: number, ladderRows: number): number {
+    if (level.floorFrom !== null) return rowY((level.floorFrom - 1) * rowsPerFloor);
+    const index = level.floors === 'spire-upper' ? 1 : 0;
+    return crownTopY(rowsPerFloor) + index * ladderRows * ROW_H;
+}

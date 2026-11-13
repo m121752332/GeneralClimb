@@ -345,7 +345,9 @@ export class ClimbSim {
         this.rng = carry ? carry.rng : createRng(seed);
         this.level = level;
         this.levelIndex = levelIndex;
-        this.wall = buildWall(width, level, this.rng, flareFor(cfg.pagodaFlare, level), cfg.tower.faces);
+        // A ladder (one column) is never wrapped round the tower.
+        const faces = width.cols === 1 ? 1 : cfg.tower.faces;
+        this.wall = buildWall(width, level, this.rng, flareFor(cfg.pagodaFlare, level), faces);
         this.scheduler = carry ? carry.scheduler : new EventScheduler(cfg.events, level.windChance, this.rng);
         this.scheduler.setWindChance(level.windChance);
         this.risk = carry ? carry.risk : 0;
@@ -358,12 +360,12 @@ export class ClimbSim {
 
     /**
      * The next level of the same run (same seed stream, scheduler, risk and time), or null
-     * when there is none or it is a spire level (ladder, not built yet).
+     * after the last level (the summit).
      */
     next(): ClimbSim | null {
         if (this.phase !== 'cleared') return null;
         const nextLevel = this.cfg.levels[this.levelIndex + 1];
-        if (!nextLevel || nextLevel.floorFrom === null) return null;
+        if (!nextLevel) return null;
         return new ClimbSim(this.cfg, this.levelIndex + 1, this.seed, {
             rng: this.rng,
             scheduler: this.scheduler,
@@ -375,6 +377,19 @@ export class ClimbSim {
 
     get stepping(): boolean {
         return this.stepT >= 0;
+    }
+
+    /**
+     * Standing on the level's start platform (plaza, ledge or roof): walking, no danger
+     * zone and no passive risk; only the weather events still count (ADR-10).
+     */
+    get onPlatform(): boolean {
+        return this.level.startPlatform && this.row === 0;
+    }
+
+    /** True after clearing the last level: the run reached the top of the spire. */
+    get summit(): boolean {
+        return this.phase === 'cleared' && this.levelIndex === this.cfg.levels.length - 1;
     }
 
     get tier(): RiskTier {
@@ -436,7 +451,8 @@ export class ClimbSim {
         }
 
         // Wind (ADR-04): moving in a gust pushes the climber one cell outward every pushEverySec.
-        if (active === 'wind' && hasInput) {
+        // Not while standing on a platform: there is nothing to be pushed off.
+        if (active === 'wind' && hasInput && !this.onPlatform) {
             this.windPushSec += dt;
             if (!this.stepping && this.windPushSec >= this.cfg.events.wind.pushEverySec) {
                 this.windPushSec -= this.cfg.events.wind.pushEverySec;
@@ -463,11 +479,12 @@ export class ClimbSim {
             this.gripping = this.idleSec >= player.gripDelaySec;
         }
 
-        // Risk (ADR-03). Zone uses the cell being climbed onto.
+        // Risk (ADR-03). Zone uses the cell being climbed onto; a platform is always calm.
         const zone = zoneOf(this.wall, this.col, Math.min(this.row, this.wall.rows - 1));
         let perSec = 0;
         let cause: FallCause = 'edge';
-        if (zone === 'danger') perSec += risk.dangerPerSec;
+        if (this.onPlatform) perSec += risk.calmGripPerSec;
+        else if (zone === 'danger') perSec += risk.dangerPerSec;
         else if (zone === 'safe') perSec += this.gripping ? risk.calmGripPerSec : risk.calmClimbPerSec;
 
         if (active === 'wind' && moving) {
@@ -521,7 +538,13 @@ export class ClimbSim {
         // Vertical first (GDD 3); fall back to the horizontal part when the way up is blocked.
         const options: Array<[number, number]> = [];
         if (dir.dy !== 0) options.push([0, Math.sign(dir.dy)]);
-        if (dir.dx !== 0) options.push([Math.sign(dir.dx), 0]);
+        // A ladder has nowhere to go sideways; a flat wall's platform has no edge to walk off.
+        const ladder = this.wall.cols === 1;
+        const flatPlatformEdge = this.wall.faces === 1 && this.onPlatform;
+        if (dir.dx !== 0 && !ladder) {
+            const c = this.col + Math.sign(dir.dx);
+            if (!(flatPlatformEdge && (c < 0 || c >= this.wall.cols))) options.push([Math.sign(dir.dx), 0]);
+        }
         for (const [dx, dy] of options) {
             const col = wrapCol(this.wall, this.col + dx);
             const row = this.row + dy;

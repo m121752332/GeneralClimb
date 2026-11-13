@@ -67,6 +67,11 @@ export interface LevelDef {
     width: string;
     windChance: number;
     obstaclesPer12Rows: number;
+    /**
+     * Row 0 is a platform (the plaza, a ledge between sections, the roof): the climber
+     * stands and walks there, no danger zone, no passive risk (ADR-10).
+     */
+    startPlatform: boolean;
     /** Derived: first / last floor, null on the spire. */
     floorFrom: number | null;
     floorTo: number | null;
@@ -275,6 +280,7 @@ function checkLevels(c: Checker, root: Obj, widths: Obj): void {
         if (width && !isObj(widths[width])) c.fail(`${path}.width`, `unknown width "${width}"`);
         c.num(raw, 'windChance', path, { min: 0, max: 1 });
         c.num(raw, 'obstaclesPer12Rows', path, { min: 0, int: true });
+        if (typeof raw.startPlatform !== 'boolean') c.fail(`${path}.startPlatform`, 'must be true or false');
 
         const floors = c.str(raw, 'floors', path);
         const range = FLOOR_RANGE.exec(floors);

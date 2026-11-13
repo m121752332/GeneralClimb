@@ -60,3 +60,19 @@ test('ring and angle deltas take the short way round', () => {
     close(angleDelta(0.1, 2 * Math.PI - 0.1), -0.2, 1e-9);
     close(angleDelta(3, -3), 2 * Math.PI - 6, 1e-9);
 });
+
+test('crown and spire: stepped crown on the roof, ladder levels stacked to the summit', async () => {
+    const m = await import('../assets/scripts/climb/TowerShape.ts');
+    const roof = m.roofY(12);
+    close(m.crownTopY(12), roof + 6);
+    close(m.summitY(12, 48), roof + 6 + 2 * 48 * m.ROW_H);
+    assert.equal(m.spireHalfAt(12, 48, roof - 0.1), null);
+    assert.equal(m.spireHalfAt(12, 48, roof + 0.1), 3.7);
+    close(m.spireHalfAt(12, 48, m.crownTopY(12)) as number, 1.0);
+    assert.ok((m.spireHalfAt(12, 48, m.summitY(12, 48) + 3) as number) < 0.45);
+    const lower = { floorFrom: null, floors: 'spire-lower' };
+    const upper = { floorFrom: null, floors: 'spire-upper' };
+    close(m.levelBaseY(lower, 12, 48), m.crownTopY(12));
+    close(m.levelBaseY(upper, 12, 48), m.crownTopY(12) + 48 * m.ROW_H);
+    close(m.levelBaseY({ floorFrom: 27, floors: '27-34F' }, 12, 48), m.rowY(26 * 12));
+});

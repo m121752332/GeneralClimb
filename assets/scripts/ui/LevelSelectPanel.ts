@@ -15,7 +15,7 @@ function floorText(level: LevelDef): string {
 
 /**
  * Grid of the 14 levels from levels.json. ADR-06: a fall always restarts at 1F, so normally
- * only level 1 can be started. Developer mode (金手指) opens every floor level; the spire stays locked.
+ * only level 1 can be started. Developer mode (金手指) opens every level, the spire included.
  */
 export function openLevelSelect(
     root: Node,

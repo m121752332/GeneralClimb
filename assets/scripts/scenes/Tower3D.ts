@@ -4,7 +4,8 @@ import {
 import type { ClimbSim } from '../climb/ClimbCore';
 import { isObstacle, zoneOf } from '../climb/ClimbCore';
 import {
-    LIFT, ROW_H, Section, angleDelta, halfAt, ringDelta, roofY, rowY, surfacePoint, towerSections,
+    CROWN, ROW_H, SPIRE_HALF, SPIRE_TIP, Section, angleDelta, halfAt, levelBaseY, profileHalf, ringDelta, roofY,
+    rowY, summitY, surfacePoint, towerSections,
 } from '../climb/TowerShape';
 
 /**
@@ -17,14 +18,20 @@ import {
 // Presentation-only constants.
 const SKY = hex('#9cc8e6');
 /** Climber stands this far in front of the glass. */
-const PLAYER_OUT = 0.45;
+const PLAYER_OUT = 0.55;
+/** The block figure is modelled ~1.9 units tall; scaled up so it reads on a phone. */
+const PLAYER_SCALE = 1.5;
+/** Top of the head above the feet, after scaling. */
+const HEAD = 2.0 * PLAYER_SCALE;
+/** Ending: the climber sits on the summit ring for this long (ADR-07 / ADR-10). */
+export const ENDING_SEC = 10;
 /** Grid quads float just off the facade to avoid z-fighting. */
 const GRID_OUT = 0.04;
 /** Horizontal field of view, so a face fills the width on any phone. */
 const FOV = 42;
 /** Camera distance from the face: `half * DIST_K + DIST_C`. */
 const DIST_K = 1.6;
-const DIST_C = 15;
+const DIST_C = 13;
 /** The camera looks this far above the climber, to show what's coming. */
 const LOOK_UP = 5;
 /** Degrees per second for Q / E, and radians per pixel for drags. */
@@ -214,6 +221,7 @@ export class Tower3D {
     userYaw = 0;
 
     private readonly rowsPerFloor: number;
+    private readonly ladderRows: number;
     private readonly sections: Section[];
     private material: Material | null = null;
     private gridNode: Node | null = null;
@@ -227,11 +235,20 @@ export class Tower3D {
     private camY = 0;
     private camHalf = 8;
     private idleOrbitSec = 0;
-    private baseRow = 0;
+    /** World y of row 0 of the current level. */
+    private baseY = 0;
+    /** Where the climber stands on the level's start platform: height and distance out. */
+    private standY = 0;
+    private standOut = 1;
+    /** Feet height last frame, for the mini map. */
+    private feetY = 0;
+    private lastWalk = 0;
     private readonly tmp = new Vec3();
+    private readonly tmp2 = new Vec3();
 
-    constructor(rowsPerFloor: number) {
+    constructor(rowsPerFloor: number, ladderRows: number) {
         this.rowsPerFloor = rowsPerFloor;
+        this.ladderRows = ladderRows;
         this.sections = towerSections(rowsPerFloor);
         const scene = director.getScene()!;
         this.root = new Node('Tower3D');
@@ -336,13 +353,17 @@ export class Tower3D {
             this.disc(mb, dh + 0.14, dy, yaw, 1.2, COL.discInner);
         }
 
-        // Crown and spire above 101F.
-        const roof = roofY(rpf);
-        mb.box(0, roof + 1.2, 0, 7.4, 2.4, 7.4, COL.crown, 0, COL.ledge);
-        mb.box(0, roof + 3.4, 0, 5.4, 2.0, 5.4, COL.glass, 0, COL.ledge);
-        mb.box(0, roof + 5.2, 0, 3.6, 1.6, 3.6, COL.crown, 0, COL.ledge);
-        mb.prism(8, roof + 6, roof + 14, 1.1, 0.8, COL.spire);
-        mb.prism(8, roof + 14, roof + 34, 0.55, 0.12, COL.spire);
+        // Crown blocks above 101F, the spire with its ladder levels, the summit ring, the needle.
+        let cy = roofY(rpf);
+        const crownCols = [COL.crown, COL.glass, COL.crown];
+        CROWN.forEach(([h, half], i) => {
+            mb.box(0, cy + h / 2, 0, half * 2, h, half * 2, crownCols[i % crownCols.length], 0, COL.ledge);
+            cy += h;
+        });
+        const top = summitY(rpf, this.ladderRows);
+        mb.prism(8, cy, top, SPIRE_HALF[0], SPIRE_HALF[1], COL.spire);
+        mb.prism(16, top - 0.3, top, 1.6, 1.6, COL.ledge);
+        mb.prism(8, top, top + SPIRE_TIP, SPIRE_HALF[1], 0.04, COL.spire);
 
         // City blocks round the plaza (fixed layout, so every run looks the same). They start
         // well outside the camera's orbit (CITY_MIN) so the camera never ends up inside one.
@@ -397,8 +418,24 @@ export class Tower3D {
         this.gridMesh?.destroy();
         const { wall, level } = sim;
         const S = this.sections;
-        this.baseRow = level.floorFrom === null ? 0 : (level.floorFrom - 1) * this.rowsPerFloor;
+        this.baseY = levelBaseY(level, this.rowsPerFloor, this.ladderRows);
+        const ry = (r: number): number => this.baseY + r * ROW_H;
+        // Start platform: the plaza on level 1, otherwise the ledge (or roof) under row 0.
+        if (level.floorFrom === 1) {
+            this.standY = 0;
+            this.standOut = 1.2;
+        } else {
+            this.standY = this.baseY;
+            this.standOut = Math.max(0.5, (this.half(this.baseY - 0.05) - this.half(this.baseY + 0.05)) * 0.55);
+        }
         const mb = new MeshBuilder();
+        if (wall.cols === 1) {
+            this.buildLadder(mb, wall.rows);
+            const { node, mesh } = this.addMesh('Grid', mb);
+            this.gridNode = node;
+            this.gridMesh = mesh;
+            return;
+        }
         const inset = 0.08;
         // One glass strip per column, split where the zone changes (pagoda flare) or an
         // obstacle sits; rows are thin (ROW_H), so per-cell quads would read as noise.
@@ -411,20 +448,19 @@ export class Tower3D {
                 if (!brk) continue;
                 if (!isObstacle(wall, c, r - 1)) {
                     const color = prevZone === 'safe' ? COL.safe : COL.danger;
-                    faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset,
-                        rowY(this.baseRow + start), rowY(this.baseRow + r), GRID_OUT, color, true);
+                    faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset, ry(start), ry(r), GRID_OUT, color, true);
                 }
                 start = r;
             }
         }
         // Half-floor lines so the climb still shows progress between slabs.
         for (let r = this.rowsPerFloor / 2; r < wall.rows; r += this.rowsPerFloor) {
-            const y = rowY(this.baseRow + r);
+            const y = ry(r);
             faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - 0.025, y + 0.025, GRID_OUT + 0.01, COL.mullion, true);
         }
         // Floor slabs inside this level, and the goal band at the top.
         for (let r = this.rowsPerFloor; r <= wall.rows; r += this.rowsPerFloor) {
-            const y = rowY(this.baseRow + r);
+            const y = ry(r);
             const top = r === wall.rows;
             faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - (top ? 0.1 : 0.05), y + (top ? 0.1 : 0.05), GRID_OUT + 0.01, top ? COL.goal : COL.slab, true);
         }
@@ -432,7 +468,7 @@ export class Tower3D {
         for (const key of wall.obstacles) {
             const c = key % wall.ring;
             const r = Math.floor(key / wall.ring);
-            const y = rowY(this.baseRow + r) + ROW_H / 2;
+            const y = ry(r) + ROW_H / 2;
             const p = surfacePoint(c + 0.5, halfAt(S, y), wall.cols, wall.faces, 0.2);
             const width = (2 * halfAt(S, y)) / wall.cols;
             mb.box(p.x, y, p.z, width * 0.92, ROW_H * 1.6, 0.45, COL.obstacle, p.yaw, COL.obstacleTop);
@@ -442,12 +478,48 @@ export class Tower3D {
         this.gridMesh = mesh;
     }
 
+    /** Spire levels: a ladder up the front (+Z) of the spire, rails and a rung every 2 rows. */
+    private buildLadder(mb: MeshBuilder, rows: number): void {
+        const y0 = this.baseY;
+        const seg = 4;
+        for (let r = 0; r < rows; r += seg) {
+            const y = y0 + (r + seg / 2) * ROW_H;
+            const z = this.half(y) + 0.12;
+            for (const x of [-0.34, 0.34]) mb.box(x, y, z, 0.07, seg * ROW_H, 0.07, COL.ledge);
+        }
+        for (let r = 0; r <= rows; r += 2) {
+            const y = y0 + r * ROW_H;
+            mb.box(0, y, this.half(y) + 0.12, 0.7, 0.05, 0.06, r === rows ? COL.goal : COL.ruyi);
+        }
+    }
+
+    /** Building half width at height y (sections, crown, spire). */
+    half(y: number): number {
+        return profileHalf(this.sections, this.rowsPerFloor, this.ladderRows, y);
+    }
+
+    /** Height of the needle's tip, for the mini map. */
+    get totalHeight(): number {
+        return summitY(this.rowsPerFloor, this.ladderRows) + SPIRE_TIP;
+    }
+
+    /** Feet height of the climber (last frame). */
+    get climberY(): number {
+        return this.feetY;
+    }
+
+    /** Bottom of the current level, for the mini map. */
+    get levelBottomY(): number {
+        return this.baseY;
+    }
+
     // ------------------------------------------------------------ climber
 
     private buildPlayer(): void {
         this.player = new Node('Climber');
         this.player.layer = Layers.Enum.DEFAULT;
         this.root.addChild(this.player);
+        this.player.setScale(PLAYER_SCALE, PLAYER_SCALE, PLAYER_SCALE);
         this.body = new Node('Body');
         this.body.layer = Layers.Enum.DEFAULT;
         this.player.addChild(this.body);
@@ -479,31 +551,43 @@ export class Tower3D {
         limb('LegR', 0.15, 0.55, 0.55, 0.18, COL.pants, COL.shoe, 1, false);
     }
 
-    /** Where the climber is: perimeter coordinate and world height of the feet. */
-    climberPos(sim: ClimbSim, fallY: number | null): { s: number; y: number } {
+    /**
+     * Where the climber is: perimeter coordinate, feet height, distance out from the wall,
+     * and how much they are standing on the start platform (1) rather than on the wall (0).
+     * On the wall the feet are on the current row, so an obstacle in the row above blocks
+     * the next step up.
+     */
+    climberPos(sim: ClimbSim, fallY: number | null): { s: number; y: number; out: number; stand: number } {
         const { wall } = sim;
         const t = sim.stepT < 0 ? 1 : sim.stepT * sim.stepT * (3 - 2 * sim.stepT);
         const dc = ringDelta(sim.fromCol, sim.col, wall.ring, wall.faces);
         const s = sim.fromCol + dc * t + 0.5;
         const row = sim.fromRow + (sim.row - sim.fromRow) * t;
-        // Hands on the current row, so the feet hang a body length below.
-        const y = fallY ?? rowY(this.baseRow + row) + ROW_H - 1.55;
-        return { s, y };
+        let stand = 0;
+        if (sim.level.startPlatform && fallY === null) {
+            if (sim.row === 0 && sim.fromRow === 0) stand = 1;
+            else if (sim.stepping && sim.fromRow === 0 && sim.row === 1) stand = 1 - t;
+            else if (sim.stepping && sim.fromRow === 1 && sim.row === 0) stand = t;
+        }
+        const wallY = this.baseY + row * ROW_H;
+        const y = fallY ?? wallY + (this.standY - wallY) * stand;
+        const out = PLAYER_OUT + (this.standOut - PLAYER_OUT) * stand;
+        return { s, y, out, stand };
     }
 
     /** World y of the climber's feet for a fall that starts now. */
-    feetY(sim: ClimbSim): number {
+    fallStartY(sim: ClimbSim): number {
         return this.climberPos(sim, null).y;
     }
 
-    /** Lowest the climber can fall to in this level: the plaza or the ledge below. */
+    /** Lowest the climber can fall to in this level: the plaza or the platform below. */
     floorY(): number {
-        return this.baseRow === 0 ? 0 : rowY(this.baseRow) - 1.55;
+        return this.standY;
     }
 
     /** Converts a fall height back to a level row for the HUD. */
     rowAtFeet(y: number): number {
-        return Math.floor((y + 1.55 - LIFT) / ROW_H) - this.baseRow;
+        return Math.floor((y - this.baseY) / ROW_H);
     }
 
     /**
@@ -512,23 +596,42 @@ export class Tower3D {
      */
     update(dt: number, sim: ClimbSim, opts: { elapsed: number; fallY: number | null; tumble: number; grip: boolean; orbitInput: number; shake: number; lift: number }): void {
         const { wall } = sim;
-        const { s, y } = this.climberPos(sim, opts.fallY);
-        const half = halfAt(this.sections, y + 1.3);
-        const out = PLAYER_OUT + opts.tumble * 1.2;
+        const pos = this.climberPos(sim, opts.fallY);
+        const { s, y } = pos;
+        this.feetY = y;
+        // Distance from the axis measured at the hips, so a flared face doesn't swallow them.
+        const half = this.half(y + 1.2);
+        const out = pos.out + opts.tumble * 1.2;
         const p = surfacePoint(s, half, wall.cols, wall.faces, out);
         this.player.setPosition(p.x, y, p.z);
         this.playerYaw = p.yaw;
-        this.player.setRotationFromEuler(0, (p.yaw * 180) / Math.PI, 0);
+
+        // Standing on a platform: face the camera, or turn to walk along the ledge.
+        const reach = sim.stepT >= 0 ? Math.sin(sim.stepT * Math.PI) : 0;
+        const standing = pos.stand > 0.5;
+        const walking = standing && sim.stepping && sim.fromRow === sim.row;
+        if (walking) this.lastWalk = Math.sign(ringDelta(sim.fromCol, sim.col, wall.ring, wall.faces));
+        let face = p.yaw;
+        if (standing) face += walking ? -this.lastWalk * Math.PI / 2 : Math.PI;
+        this.player.setRotationFromEuler(0, (face * 180) / Math.PI, 0);
 
         // Pose: lean in when gripping, swing limbs while stepping, tumble when falling.
         // Arms are modelled reaching up the wall and legs hanging down; +X tilt swings them out.
-        const reach = sim.stepT >= 0 ? Math.sin(sim.stepT * Math.PI) : 0;
-        const lean = opts.grip ? 12 : 4;
-        this.body.setRotationFromEuler(-lean + opts.tumble * 150, 0, opts.tumble * 40);
-        for (const l of this.limbs) {
-            const swing = l.sign * reach * 30;
-            if (l.arm) l.node.setRotationFromEuler(swing + (opts.grip ? -6 : 6), 0, -l.sign * (opts.grip ? 10 : 22));
-            else l.node.setRotationFromEuler(swing - 10, 0, l.sign * 6);
+        if (standing) {
+            this.body.setRotationFromEuler(0, 0, 0);
+            for (const l of this.limbs) {
+                const swing = walking ? l.sign * reach * 35 : 0;
+                if (l.arm) l.node.setRotationFromEuler(180 - swing, 0, -l.sign * 8);
+                else l.node.setRotationFromEuler(swing, 0, 0);
+            }
+        } else {
+            const lean = opts.grip ? 12 : 4;
+            this.body.setRotationFromEuler(-lean + opts.tumble * 150, 0, opts.tumble * 40);
+            for (const l of this.limbs) {
+                const swing = l.sign * reach * 30;
+                if (l.arm) l.node.setRotationFromEuler(swing + (opts.grip ? -6 : 6), 0, -l.sign * (opts.grip ? 10 : 22));
+                else l.node.setRotationFromEuler(swing - 10, 0, l.sign * 6);
+            }
         }
 
         // Camera: follow the climber round the tower, plus the player's own orbit.
@@ -555,11 +658,50 @@ export class Tower3D {
     /** Snaps the camera onto the climber (new run). */
     snap(sim: ClimbSim): void {
         const { s, y } = this.climberPos(sim, null);
-        const p = surfacePoint(s, halfAt(this.sections, y), sim.wall.cols, sim.wall.faces);
+        const p = surfacePoint(s, this.half(y + 1.2), sim.wall.cols, sim.wall.faces);
         this.followYaw = p.yaw;
         this.userYaw = 0;
         this.camY = y + LOOK_UP;
-        this.camHalf = halfAt(this.sections, y);
+        this.camHalf = this.half(y + 1.2);
+    }
+
+    /**
+     * Summit ending (about ENDING_SEC): the climber sits on the edge of the summit ring
+     * facing the city; the camera eases in from a three-quarter view outside the ring,
+     * then rises, pulls back and circles round, tilting down to the streets.
+     */
+    updateEnding(t: number): void {
+        const top = summitY(this.rowsPerFloor, this.ladderRows);
+        const seat = 1.15;
+        // Hips (0.55 up the unscaled model) rest on the ring.
+        this.player.setPosition(0, top - 0.55 * PLAYER_SCALE + 0.05, seat);
+        this.player.setRotationFromEuler(0, 180, 0);
+        this.feetY = top;
+        this.playerYaw = 0;
+        const breathe = Math.sin(t * 2) * 2;
+        this.body.setRotationFromEuler(-14 + breathe, 0, 0);
+        for (const l of this.limbs) {
+            if (l.arm) l.node.setRotationFromEuler(165, 0, -l.sign * 25);
+            else l.node.setRotationFromEuler(70 + Math.sin(t * 1.5 + l.sign) * 8, 0, l.sign * 6);
+        }
+
+        const smooth = (x: number): number => {
+            const k = Math.min(1, Math.max(0, x));
+            return k * k * (3 - 2 * k);
+        };
+        // Orbit the seated climber from outside the ring (never over the needle side), so the
+        // ring and spire stay behind or below the climber instead of in front of the lens.
+        // 0–3.5 s: slow push from a side three-quarter view to a front three-quarter view.
+        // 3.5 s–end: rise and pull out while circling, tilting down to the city below.
+        const c = this.tmp2.set(0, top + 0.8, seat);
+        const a = smooth(t / 3.5);
+        const u = smooth((t - 3.5) / (ENDING_SEC - 3.5));
+        const phi = 1.25 - 0.35 * a + u * Math.PI * 1.1;
+        const r = 5.2 - 0.6 * a + (20 - 4.6) * u;
+        const h = 1.5 + 0.3 * a + 8 * u;
+        this.camera.node.setPosition(c.x + Math.sin(phi) * r, c.y + h, c.z + Math.cos(phi) * r);
+        this.camera.node.lookAt(this.tmp.set(c.x, c.y - 0.2 - u * 3, c.z));
+        this.camYaw = phi;
     }
 
     /**
@@ -573,7 +715,7 @@ export class Tower3D {
     /** Climber's head in world space, for the name tag and screen effects. */
     headWorld(out: Vec3): Vec3 {
         this.player.getWorldPosition(out);
-        out.y += 2.0;
+        out.y += HEAD;
         return out;
     }
 
