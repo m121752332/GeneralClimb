@@ -325,6 +325,8 @@ export class ClimbSim {
     /** Seconds of climbing time for the whole run; pauses and transitions are never fed in. */
     climbSec = 0;
     maxRow = 0;
+    /** Climb speed multiplier (developer mode only; 1 for players). Scales step time only. */
+    speed = 1;
     /** Seconds the eagle has been watching a moving climber (0 when not spotted). */
     eagleSpotSec = 0;
 
@@ -366,13 +368,15 @@ export class ClimbSim {
         if (this.phase !== 'cleared') return null;
         const nextLevel = this.cfg.levels[this.levelIndex + 1];
         if (!nextLevel) return null;
-        return new ClimbSim(this.cfg, this.levelIndex + 1, this.seed, {
+        const sim = new ClimbSim(this.cfg, this.levelIndex + 1, this.seed, {
             rng: this.rng,
             scheduler: this.scheduler,
             risk: this.risk,
             climbSec: this.climbSec,
             runMaxFloor: this.runMaxFloor,
         });
+        sim.speed = this.speed;
+        return sim;
     }
 
     get stepping(): boolean {
@@ -432,7 +436,7 @@ export class ClimbSim {
         const hasInput = dir.dx !== 0 || dir.dy !== 0;
 
         if (this.stepping) {
-            this.stepT += dt / player.cellSec;
+            this.stepT += (dt * this.speed) / player.cellSec;
             if (this.stepT >= 1) {
                 const wasPush = this.pushed;
                 this.stepT = -1;

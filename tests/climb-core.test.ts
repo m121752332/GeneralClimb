@@ -440,3 +440,27 @@ test('the whole run from level 12 to the summit can be climbed', () => {
     }
     assert.equal(sim, null);
 });
+
+test('dev speed: steps take cellSec / speed, and the next level keeps the speed', () => {
+    const c = cfg();
+    const time = (speed: number): number => {
+        const sim = new ClimbSim(c, 1, 3);
+        sim.speed = speed;
+        let t = 0;
+        sim.update(FRAME, UP);
+        t += FRAME;
+        while (sim.stepping) {
+            sim.update(FRAME, NO_DIR);
+            t += FRAME;
+        }
+        return t;
+    };
+    const t1 = time(1);
+    const t5 = time(5);
+    assert.ok(Math.abs(t1 - c.player.cellSec) < 2 * FRAME, `x1 step ${t1}`);
+    assert.ok(Math.abs(t5 - c.player.cellSec / 5) < 2 * FRAME, `x5 step ${t5}`);
+    const sim = new ClimbSim(c, 0, 9);
+    sim.speed = 3;
+    sim.phase = 'cleared';
+    assert.equal(sim.next()?.speed, 3);
+});

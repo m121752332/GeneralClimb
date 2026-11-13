@@ -90,6 +90,9 @@
   "tower": {
     "faces": 4
   },
+  "dev": {
+    "climbSpeeds": [1, 1.5, 2, 3, 5]
+  },
   "levels": [
     {
       "id": 1,

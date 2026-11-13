@@ -24,7 +24,7 @@ test('defaults when storage is empty', () => {
 test('set persists and a new store reads it back', () => {
     const storage = new MemoryStorage();
     new SettingsStore(storage).set({ volume: 0.25, vibration: false, muted: true });
-    assert.deepEqual(new SettingsStore(storage).get(), { volume: 0.25, vibration: false, flashEffects: true, muted: true, devMode: false });
+    assert.deepEqual(new SettingsStore(storage).get(), { volume: 0.25, vibration: false, flashEffects: true, muted: true, devMode: false, devSpeed: 1 });
     assert.ok(storage.getItem(SETTINGS_KEY));
 });
 

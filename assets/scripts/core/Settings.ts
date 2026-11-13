@@ -13,6 +13,8 @@ export interface SettingsData {
     muted: boolean;
     /** Developer mode from the 「金手指」 code RUNGM: every non-spire level is selectable. */
     devMode: boolean;
+    /** Climb speed picked in developer mode (one of levels.json dev.climbSpeeds). */
+    devSpeed: number;
 }
 
 /** The subset of the Web Storage API this module uses. */
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS: Readonly<SettingsData> = Object.freeze({
     flashEffects: true,
     muted: false,
     devMode: false,
+    devSpeed: 1,
 });
 
 function clamp01(v: number): number {
@@ -45,6 +48,7 @@ export function normalizeSettings(raw: unknown): SettingsData {
     if (typeof r.flashEffects === 'boolean') out.flashEffects = r.flashEffects;
     if (typeof r.muted === 'boolean') out.muted = r.muted;
     if (typeof r.devMode === 'boolean') out.devMode = r.devMode;
+    if (typeof r.devSpeed === 'number' && Number.isFinite(r.devSpeed) && r.devSpeed > 0) out.devSpeed = r.devSpeed;
     return out;
 }
 
