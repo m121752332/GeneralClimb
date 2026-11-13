@@ -31,14 +31,11 @@ export function practiceLevel(cfg: LevelConfig): LevelDef {
 }
 
 /**
- * Rows at which the practice demo events start, one per event, spread up the house so each
- * comes with enough wall left above it to be felt before the roof (the last one still has
- * about a third of the house to go).
+ * Rows at which the practice demo events start: `practice.demoAt` (shares of the house
+ * height) turned into rows, never the ground row nor the roof.
  */
-export function demoRows(rows: number, count: number): number[] {
-    const out: number[] = [];
-    for (let i = 0; i < count; i++) out.push(Math.max(1, Math.round((rows * (i + 0.35)) / (count + 0.5))));
-    return out;
+export function demoRows(rows: number, demoAt: readonly number[]): number[] {
+    return demoAt.map((f) => Math.min(rows - 1, Math.max(1, Math.round(rows * f))));
 }
 
 // ---------------------------------------------------------------- RNG
@@ -404,7 +401,7 @@ export class ClimbSim {
         const faces = width.cols === 1 ? 1 : cfg.tower.faces;
         this.wall = buildWall(width, level, this.rng, flareFor(cfg.pagodaFlare, level), faces);
         this.scheduler = carry ? carry.scheduler : new EventScheduler(cfg.events, level.windChance, this.rng, practice);
-        this.demoRows = practice ? demoRows(level.rows, cfg.practice.demoEvents.length) : [];
+        this.demoRows = practice ? demoRows(level.rows, cfg.practice.demoAt) : [];
         this.scheduler.setWindChance(level.windChance);
         this.risk = carry ? carry.risk : 0;
         this.climbSec = carry ? carry.climbSec : 0;
@@ -462,6 +459,16 @@ export class ClimbSim {
     /** Practice demo events still to come (not yet started). */
     get demosLeft(): number {
         return this.demoRows.length - this.demoIndex;
+    }
+
+    /**
+     * Practice: the roof stays shut while a demo event is still to come, queued, warning or
+     * running, so a player who rushes up still sees every one before practice ends.
+     */
+    get roofLocked(): boolean {
+        if (!this.practice) return false;
+        const s = this.scheduler;
+        return this.demosLeft > 0 || s.queued.length > 0 || s.state === 'warning' || s.state === 'active';
     }
 
     get tier(): RiskTier {
@@ -629,6 +636,7 @@ export class ClimbSim {
             const col = wrapCol(this.wall, this.col + dx);
             const row = this.row + dy;
             if (row < 0) continue;
+            if (row >= this.wall.rows && this.roofLocked) continue;
             if (row < this.wall.rows && zoneOf(this.wall, col, row) !== 'out' && isObstacle(this.wall, col, row)) continue;
             this.fromCol = this.col;
             this.fromRow = this.row;

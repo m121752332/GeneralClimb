@@ -892,9 +892,11 @@ export class Climb extends Component {
 
         // Practice: say what to do while an event warns and runs (not over the result screens).
         const tipKind = sim.practice && (this.mode === 'play' || this.mode === 'paused') ? kind : null;
-        this.tipLabel.node.active = tipKind !== null && !this.overlayLabel.node.active;
-        if (tipKind) {
-            this.tipLabel.string = PRACTICE_TIP[tipKind];
+        // Rushed to the top before the demos are done: the roof waits for them.
+        const waitRoof = sim.practice && this.mode === 'play' && tipKind === null && sim.roofLocked && sim.row >= sim.wall.rows - 1;
+        this.tipLabel.node.active = (tipKind !== null || waitRoof) && !this.overlayLabel.node.active;
+        if (tipKind || waitRoof) {
+            this.tipLabel.string = tipKind ? PRACTICE_TIP[tipKind] : '天氣還沒示範完\n抓牢等一下再上屋頂';
             this.tipLabel.node.setPosition(0, top - TIP_TOP);
         }
 

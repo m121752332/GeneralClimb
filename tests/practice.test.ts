@@ -45,15 +45,38 @@ test('practice level: three floors on the practice width, ground start, no obsta
     assert.equal(sim.wall.cols, c.widths[c.practice.width].cols);
 });
 
-test('demo rows: one per event, increasing, the last with wall still above it', () => {
-    const rows = demoRows(36, 3);
-    assert.deepEqual(rows, [4, 14, 24]);
-    assert.deepEqual(demoRows(12, 1), [3]);
-    for (const n of [1, 2, 3, 5]) {
-        const r = demoRows(36, n);
-        assert.equal(r.length, n);
-        for (let i = 1; i < n; i++) assert.ok(r[i] > r[i - 1]);
-        assert.ok(r[n - 1] <= 36 - 6, "at least half a floor above the last one");
+test('demo rows: practice.demoAt as shares of the house height, never the ground or the roof', () => {
+    const c = cfg();
+    assert.deepEqual(demoRows(36, c.practice.demoAt), [4, 14, 25]);
+    assert.deepEqual(demoRows(36, [0.001, 0.999]), [1, 35]);
+});
+
+test('schema: practice.demoAt needs one increasing share in (0, 1) per demo event', () => {
+    const bad = (mut: (p: any) => void) => {
+        const r = JSON.parse(JSON.stringify(raw));
+        mut(r.practice);
+        assert.throws(() => parseLevelConfig(r), /practice\.demoAt/);
+    };
+    bad((p) => { p.demoAt = [0.1, 0.4]; });
+    bad((p) => { p.demoAt = [0.1, 0.4, 1]; });
+    bad((p) => { p.demoAt = [0.4, 0.1, 0.7]; });
+    bad((p) => { delete p.demoAt; });
+});
+
+test('practice: rushing straight up never skips a demo; the roof waits for them', () => {
+    const c = cfg();
+    for (let seed = 1; seed <= 20; seed++) {
+        const sim = new ClimbSim(c, 0, seed, undefined, true);
+        const seen: string[] = [];
+        // Hold Up the whole time (only pausing in rain, which would make the climber fall).
+        for (let t = 0; t < 300 && sim.phase === 'climbing'; t += FRAME) {
+            const s = sim.scheduler;
+            if (s.state === 'warning' && s.kind && seen[seen.length - 1] !== s.kind) seen.push(s.kind);
+            const stop = s.activeKind === 'rain' || s.activeKind === 'eagle';
+            sim.update(FRAME, stop ? NO_DIR : UP);
+        }
+        assert.equal(sim.phase, 'cleared', `seed ${seed}: ${sim.fallCause}`);
+        assert.deepEqual(seen, c.practice.demoEvents, `seed ${seed}`);
     }
 });
 
