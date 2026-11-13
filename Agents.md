@@ -66,6 +66,7 @@ GeneralClimb/
 金手指（設定頁）：`RUNGM` 開啟、`STOPGM` 關閉開發人員模式（`Settings.devMode` → `GameSession.devMode`），開啟時選關可選任一樓層關（尖塔 13–14 關仍鎖）；解析在 `core/CheatCodes.ts`、可選關卡規則在 `core/LevelAccess.ts`。開發人員模式在關卡左上有爬樓變速（`levels.json` 的 `dev.climbSpeeds`：×1／×1.5／×2／×3／×5，點擊或按 V 切換，存在 `Settings.devSpeed`），一般玩家固定 ×1。
 音效與 BGM（M4）：`core/Audio.ts` 用 Web Audio 即時合成（原創、無音檔），音效表 `SOUNDS`、曲子 `TRACKS`；`core/Sound.ts` 的 `sound()` 是共用引擎，跟著設定的音量／靜音。瀏覽器要等第一次點擊或按鍵才會出聲。
 窗內 NPC（M2）：`climb/CrowdPlan.ts`（純 TS：每關固定的窗位、種類、反應）＋`scenes/WindowCrowd.ts`（身體合成一個 mesh，只有手臂是節點）；只放在安全欄、整層無障礙的窗，尖塔不放。攀爬者靠近時揮手或拍照，有危險或墜落時擔心。共用網格工具在 `scenes/MeshKit.ts`。
+練習模式（GDD §7）：主頁「練習模式」→ `GameSession.mode = 'practice'` → 同一個 Climb 場景。`ClimbCore.practiceLevel()` 產生三層樓平房關（`levels.json` 的 `practice`：樓層數、牆寬、`demoEvents`、`intensity`），`demoRows()` 決定每個示範事件在哪一列觸發（各一次、依序）；練習時不跑計時事件，事件長度取 `durationSec` 最小值，`intensity` 只放寬懲罰（強風推移間隔、強風風險、雨天容許時間、老鷹發現時間 ÷ 或 × intensity）。`Tower3D` 傳入樓層數就改畫平房（屋頂女兒牆、樓梯間、水塔，遠方天際線有 101）。墜落回地面再練、登頂顯示「練習完成」，不寫任何紀錄。網址加 `?practice=1` 可直接進練習。
 關卡中的「退出」（回主畫面，按 X 也可）只在該關起點（第 0 列）、暫停、墜落或結算畫面出現。
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService

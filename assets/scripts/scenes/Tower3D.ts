@@ -4,8 +4,8 @@ import {
 import type { ClimbSim } from '../climb/ClimbCore';
 import { zoneOf } from '../climb/ClimbCore';
 import {
-    CROWN, ROW_H, SPIRE_HALF, SPIRE_TIP, Section, angleDelta, halfAt, levelBaseY, profileHalf, ringDelta, roofY,
-    rowY, summitY, surfacePoint, towerSections,
+    CROWN, HOUSE_HALF, LIFT, ROW_H, SPIRE_HALF, SPIRE_TIP, Section, angleDelta, halfAt, houseSections, levelBaseY,
+    profileHalf, ringDelta, roofY, rowY, summitY, surfacePoint, towerSections,
 } from '../climb/TowerShape';
 import { climberParts } from '../climb/ClimberShape';
 import { MeshBuilder, type V3 } from './MeshKit';
@@ -67,6 +67,9 @@ const RETURN_DELAY_SEC = 1.5;
 const RETURN_RATE = 3;
 /** Nearest city block distance from the tower axis; the orbit radius is at most ~33. */
 const CITY_MIN = 60;
+/** Practice: the real 101 stands on the skyline this far away, scaled down to this share. */
+const SKYLINE_101_DIST = 520;
+const SKYLINE_101_SCALE = 0.8;
 
 const COL = {
     glass: hex('#3f8f98'),
@@ -95,6 +98,14 @@ const COL = {
     obstacleTop: hex('#d3dcda'),
     louvre: hex('#3e4a4c'),
     goal: hex('#e8c66a'),
+    // Practice house: tiled plinth, concrete roof, white parapet, stairwell, steel water tank.
+    plinth: hex('#9a8f80'),
+    roof: hex('#a7a49c'),
+    parapet: hex('#ece8de'),
+    stairwell: hex('#d9d2c2'),
+    door: hex('#6b4a32'),
+    tank: hex('#c7ccd0'),
+    lawn: hex('#7f9a62'),
 };
 
 function hex(s: string): Color {
@@ -227,11 +238,15 @@ export class Tower3D {
 
     private readonly crowdTuning: CrowdTuning;
 
-    constructor(rowsPerFloor: number, ladderRows: number, crowdTuning: CrowdTuning) {
+    /** Practice mode: a small house of this many floors instead of the 101 (0 = the 101). */
+    private readonly houseFloors: number;
+
+    constructor(rowsPerFloor: number, ladderRows: number, crowdTuning: CrowdTuning, houseFloors = 0) {
         this.crowdTuning = crowdTuning;
         this.rowsPerFloor = rowsPerFloor;
         this.ladderRows = ladderRows;
-        this.sections = towerSections(rowsPerFloor);
+        this.houseFloors = houseFloors;
+        this.sections = houseFloors > 0 ? houseSections(rowsPerFloor, houseFloors) : towerSections(rowsPerFloor);
         const scene = director.getScene()!;
         this.root = new Node('Tower3D');
         this.root.layer = Layers.Enum.DEFAULT;
@@ -256,7 +271,7 @@ export class Tower3D {
     /** Builds the static scenery once the material is loaded. */
     async init(): Promise<void> {
         this.material = await loadMaterial();
-        this.addMesh('Scenery', this.buildScenery());
+        this.addMesh('Scenery', this.houseFloors > 0 ? this.buildHouse() : this.buildScenery());
         this.crowd = new WindowCrowd(this.root, this.sections, this.rowsPerFloor, this.crowdTuning, (name, mb, parent) => {
             const { node, mesh } = this.addMesh(name, mb, parent);
             return { node, destroy: () => mesh.destroy() };
@@ -355,8 +370,65 @@ export class Tower3D {
         mb.prism(16, top - 0.3, top, 1.6, 1.6, COL.ledge);
         mb.prism(8, top, top + SPIRE_TIP, SPIRE_HALF[1], 0.04, COL.spire);
 
-        // City blocks round the plaza (fixed layout, so every run looks the same). They start
-        // well outside the camera's orbit (CITY_MIN) so the camera never ends up inside one.
+        this.addCity(mb);
+        return mb;
+    }
+
+    /**
+     * Practice scenery (GDD §7): a three-storey house on a small lawn. Its walls are entirely
+     * the level grid; this adds the tiled plinth below the first row, a flat roof with a
+     * parapet, a stairwell hut and a water tank, the same city round it, and the real 101 far
+     * off on the skyline.
+     */
+    private buildHouse(): MeshBuilder {
+        const mb = new MeshBuilder();
+        const S = this.sections;
+        const faces = 4;
+        const h = HOUSE_HALF;
+        const top = S[0].y1;
+        mb.quad([-400, 0, 400], [400, 0, 400], [400, 0, -400], [-400, 0, -400], COL.plaza, true);
+        const lawn = h + 7;
+        mb.quad([-lawn, 0.01, lawn], [lawn, 0.01, lawn], [lawn, 0.01, -lawn], [-lawn, 0.01, -lawn], COL.lawn, true);
+        const m = h + 3;
+        mb.quad([-m, 0.02, m], [m, 0.02, m], [m, 0.02, -m], [-m, 0.02, -m], COL.mat, true);
+        // Plinth from the ground to the first climbing row, and a front door on the back face.
+        for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, 0, LIFT, 0.13, COL.plinth);
+        mb.box(0, LIFT / 2 + 0.2, -h - 0.16, 1.6, LIFT + 0.4, 0.08, COL.door);
+        // Roof slab, parapet, stairwell hut (door facing the climber's start) and water tank.
+        mb.box(0, top + 0.12, 0, h * 2 + 0.5, 0.24, h * 2 + 0.5, COL.roof, 0, COL.roof);
+        const pw = 0.25, ph = 0.9, edge = h + 0.25 - pw / 2;
+        for (const [x, z, sx, sz] of [[0, edge, h * 2 + 0.5, pw], [0, -edge, h * 2 + 0.5, pw], [edge, 0, pw, h * 2], [-edge, 0, pw, h * 2]]) {
+            mb.box(x, top + 0.24 + ph / 2, z, sx, ph, sz, COL.parapet);
+        }
+        mb.box(-h * 0.45, top + 0.24 + 1.3, -h * 0.35, 3.2, 2.6, 3, COL.stairwell, 0, COL.parapet);
+        mb.box(-h * 0.45, top + 0.24 + 0.95, -h * 0.35 + 1.52, 1, 1.9, 0.05, COL.door);
+        for (const [x, z] of [[1.6, -2.2], [3.2, -2.2], [1.6, -3.6], [3.2, -3.6]]) mb.box(x, top + 0.74, z, 0.12, 1, 0.12, COL.louvre);
+        mb.prism(12, top + 1.24, top + 2.9, 1.05, 1.05, COL.tank, 2.4, -2.9);
+
+        this.addCity(mb);
+
+        // The 101 on the skyline: the same sections, crown and spire, as simple tapered blocks.
+        const k = SKYLINE_101_SCALE;
+        const z0 = -SKYLINE_101_DIST;
+        const tower = towerSections(this.rowsPerFloor);
+        for (const sec of tower) {
+            mb.prism(4, sec.y0 * k, sec.y1 * k, sec.half0 * Math.SQRT2 * k, sec.half1 * Math.SQRT2 * k, sec.kind === 'segment' ? COL.glass : COL.paneLow, 0, z0);
+        }
+        let cy = roofY(this.rowsPerFloor);
+        for (const [ch, half] of CROWN) {
+            mb.prism(4, cy * k, (cy + ch) * k, half * Math.SQRT2 * k, half * Math.SQRT2 * k, COL.crown, 0, z0);
+            cy += ch;
+        }
+        const spireTop = summitY(this.rowsPerFloor, this.ladderRows) + SPIRE_TIP;
+        mb.prism(8, cy * k, spireTop * k, SPIRE_HALF[0] * k, 0.04, COL.spire, 0, z0);
+        return mb;
+    }
+
+    /**
+     * City blocks round the plaza (fixed layout, so every run looks the same). They start well
+     * outside the camera's orbit (CITY_MIN) so the camera never ends up inside one.
+     */
+    private addCity(mb: MeshBuilder): void {
         let seed = 101;
         const rnd = (): number => {
             seed = (seed * 16807) % 2147483647;
@@ -372,7 +444,6 @@ export class Tower3D {
             const h = near ? 4 + rnd() * 18 : 6 + rnd() * rnd() * 60;
             mb.box(Math.sin(a) * r, h / 2, Math.cos(a) * r, w, h, d, tones[i % tones.length], rnd() * 0.4, hex('#e4e0d8'));
         }
-        return mb;
     }
 
     /** Flat square ring at height y between half widths outer and inner. */
