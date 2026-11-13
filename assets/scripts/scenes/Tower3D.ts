@@ -23,10 +23,10 @@ const GRID_OUT = 0.04;
 /** Horizontal field of view, so a face fills the width on any phone. */
 const FOV = 42;
 /** Camera distance from the face: `half * DIST_K + DIST_C`. */
-const DIST_K = 1.5;
-const DIST_C = 9;
+const DIST_K = 1.6;
+const DIST_C = 15;
 /** The camera looks this far above the climber, to show what's coming. */
-const LOOK_UP = 2.2;
+const LOOK_UP = 5;
 /** Degrees per second for Q / E, and radians per pixel for drags. */
 const KEY_ORBIT_DEG = 100;
 const DRAG_ORBIT = 0.008;
@@ -400,14 +400,27 @@ export class Tower3D {
         this.baseRow = level.floorFrom === null ? 0 : (level.floorFrom - 1) * this.rowsPerFloor;
         const mb = new MeshBuilder();
         const inset = 0.08;
-        for (let r = 0; r < wall.rows; r++) {
-            const y0 = rowY(this.baseRow + r);
-            const y1 = y0 + ROW_H;
-            for (let c = 0; c < wall.ring; c++) {
-                if (isObstacle(wall, c, r)) continue;
-                const color = zoneOf(wall, c, r) === 'safe' ? COL.safe : COL.danger;
-                faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset, y0 + 0.03, y1 - 0.03, GRID_OUT, color, true);
+        // One glass strip per column, split where the zone changes (pagoda flare) or an
+        // obstacle sits; rows are thin (ROW_H), so per-cell quads would read as noise.
+        for (let c = 0; c < wall.ring; c++) {
+            let start = 0;
+            for (let r = 1; r <= wall.rows; r++) {
+                const prevZone = zoneOf(wall, c, r - 1);
+                const brk = r === wall.rows || isObstacle(wall, c, r) || isObstacle(wall, c, r - 1)
+                    || zoneOf(wall, c, r) !== prevZone;
+                if (!brk) continue;
+                if (!isObstacle(wall, c, r - 1)) {
+                    const color = prevZone === 'safe' ? COL.safe : COL.danger;
+                    faceQuad(mb, S, wall.cols, wall.faces, c + inset, c + 1 - inset,
+                        rowY(this.baseRow + start), rowY(this.baseRow + r), GRID_OUT, color, true);
+                }
+                start = r;
             }
+        }
+        // Half-floor lines so the climb still shows progress between slabs.
+        for (let r = this.rowsPerFloor / 2; r < wall.rows; r += this.rowsPerFloor) {
+            const y = rowY(this.baseRow + r);
+            faceQuad(mb, S, wall.cols, wall.faces, 0, wall.ring, y - 0.025, y + 0.025, GRID_OUT + 0.01, COL.mullion, true);
         }
         // Floor slabs inside this level, and the goal band at the top.
         for (let r = this.rowsPerFloor; r <= wall.rows; r += this.rowsPerFloor) {
