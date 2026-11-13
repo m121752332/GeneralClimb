@@ -59,6 +59,12 @@ export interface TowerConfig {
     faces: number;
 }
 
+/** Developer-mode (RUNGM) aids. Normal players always climb at x1. */
+export interface DevConfig {
+    /** Climb speed multipliers the developer can cycle through; the first is 1. */
+    climbSpeeds: number[];
+}
+
 export interface LevelDef {
     id: number;
     name: string;
@@ -94,6 +100,7 @@ export interface LevelConfig {
     widths: Record<string, WidthConfig>;
     pagodaFlare: PagodaFlareConfig;
     tower: TowerConfig;
+    dev: DevConfig;
     levels: LevelDef[];
     practice: PracticeConfig;
 }
@@ -319,6 +326,22 @@ function checkTower(c: Checker, root: Obj): void {
     if (t && Number.isInteger(faces) && faces !== 1 && faces !== 4) c.fail('$.tower.faces', `must be 1 or 4, got ${faces}`);
 }
 
+function checkDev(c: Checker, root: Obj): void {
+    const d = c.obj(root, 'dev', '$');
+    if (!d) return;
+    const v = d.climbSpeeds;
+    const at = '$.dev.climbSpeeds';
+    if (!Array.isArray(v) || v.length === 0) {
+        c.fail(at, 'must be a non-empty array');
+        return;
+    }
+    v.forEach((x, i) => c.numValue(x, `${at}[${i}]`, { gt: 0 }));
+    if (v[0] !== 1) c.fail(`${at}[0]`, `must be 1 (the normal speed), got ${String(v[0])}`);
+    for (let i = 1; i < v.length; i++) {
+        if (!(v[i] > v[i - 1])) c.fail(`${at}[${i}]`, 'speeds must be in increasing order');
+    }
+}
+
 function checkPractice(c: Checker, root: Obj, widths: Obj): void {
     const p = c.obj(root, 'practice', '$');
     c.num(p, 'floors', '$.practice', { min: 1, int: true });
@@ -357,6 +380,7 @@ export function parseLevelConfig(input: unknown): LevelConfig {
     checkLevels(c, root, widths);
     checkPagodaFlare(c, root);
     checkTower(c, root);
+    checkDev(c, root);
     checkPractice(c, root, widths);
 
     if (c.issues.length > 0) throw new LevelConfigError(c.issues);
