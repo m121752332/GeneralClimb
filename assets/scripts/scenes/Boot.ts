@@ -4,8 +4,9 @@ import type { LevelConfig } from '../config/LevelConfig';
 import { type BootSnapshot, type BootStage, STAGE_MARK, describeWeather, runStages } from '../core/BootStages';
 import { formatBest, readLocalBest } from '../core/LocalBest';
 import { applyScreenFit } from '../core/ScreenFit';
+import { AudioEngine } from '../core/Audio';
 import { settings } from '../core/Settings';
-import { STYLE, hex, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
+import { STYLE, hex, loadBrandIcon, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
 import { buildBackdrop } from './HomeBackdrop';
 
 const { ccclass } = _decorator;
@@ -74,16 +75,26 @@ export class Boot extends Component {
                 title: '音效',
                 run: async () => {
                     const s = settings().get();
-                    return `M4 開放 · 音量 ${Math.round(s.volume * 100)}%${s.muted ? '（靜音）' : ''}`;
+                    if (!AudioEngine.supported) return '此瀏覽器不支援音效';
+                    return `合成音效 · 音量 ${Math.round(s.volume * 100)}%${s.muted ? '（靜音）' : ''}`;
                 },
             },
             {
                 title: '場景渲染',
-                run: (ctx) => new Promise<string>((resolve, reject) => {
-                    director.preloadScene(HOME_SCENE, (done, total) => {
-                        if (total > 0) ctx.report(done / total);
-                    }, (err) => (err ? reject(err) : resolve('主畫面就緒')));
-                }),
+                run: async (ctx) => {
+                    // The logo is preloaded with the scene so Home draws it on its first frame.
+                    // A missing logo is cosmetic: Home loads it again, so it does not fail Boot.
+                    const icon = loadBrandIcon().then(() => true, (err: unknown) => {
+                        console.warn('GCR icon not preloaded', err);
+                        return false;
+                    });
+                    await new Promise<void>((resolve, reject) => {
+                        director.preloadScene(HOME_SCENE, (done, total) => {
+                            if (total > 0) ctx.report(done / total);
+                        }, (err) => (err ? reject(err) : resolve()));
+                    });
+                    return (await icon) ? '主畫面與圖示就緒' : '主畫面就緒（圖示稍後載入）';
+                },
             },
         ];
     }
