@@ -7,10 +7,11 @@ import {
     CROWN, ROW_H, SPIRE_HALF, SPIRE_TIP, Section, angleDelta, halfAt, levelBaseY, profileHalf, ringDelta, roofY,
     rowY, summitY, surfacePoint, towerSections,
 } from '../climb/TowerShape';
+import { climberParts } from '../climb/ClimberShape';
 
 /**
  * 3D view of the climb (ADR-10): a low-poly Taipei 101 built in code, the current level's
- * climbing grid wrapped round its four faces, a block-figure climber, and a camera that
+ * climbing grid wrapped round its four faces, the climber (ClimberShape), and a camera that
  * orbits the tower axis. Everything is vertex-coloured unlit geometry in a handful of meshes
  * (one material), so it stays cheap on phones. No rules here: it only draws a ClimbSim.
  */
@@ -19,7 +20,7 @@ import {
 const SKY = hex('#9cc8e6');
 /** Climber stands this far in front of the glass. */
 const PLAYER_OUT = 0.55;
-/** The block figure is modelled ~1.9 units tall; scaled up so it reads on a phone. */
+/** The climber is modelled ~1.95 units tall; scaled up so it reads on a phone. */
 const PLAYER_SCALE = 1.5;
 /** Top of the head above the feet, after scaling. */
 const HEAD = 2.0 * PLAYER_SCALE;
@@ -67,11 +68,6 @@ const COL = {
     obstacleTop: hex('#8a8a8a'),
     slab: hex('#173a40'),
     goal: hex('#e8c66a'),
-    body: hex('#d62c2c'),
-    skin: hex('#f0c090'),
-    hair: hex('#2a2a2a'),
-    pants: hex('#3a3f4a'),
-    shoe: hex('#f2c230'),
 };
 
 function hex(s: string): Color {
@@ -162,6 +158,22 @@ class MeshBuilder {
         for (let i = 0; i < n; i++) this.indices.push(c, c + 1 + i, c + 2 + i);
     }
 
+    /** Wraps ready-made buffers (e.g. a ClimberShape part, already lit). */
+    static from(positions: number[], colors: number[], indices: number[]): MeshBuilder {
+        const mb = new MeshBuilder();
+        mb.positions = positions;
+        mb.colors = colors;
+        mb.indices = indices;
+        for (let i = 0; i < positions.length; i += 3) {
+            for (let k = 0; k < 3; k++) {
+                const v = positions[i + k];
+                if (v < mb.min[k]) mb.min[k] = v;
+                if (v > mb.max[k]) mb.max[k] = v;
+            }
+        }
+        return mb;
+    }
+
     build(): Mesh {
         const geometry = {
             positions: this.positions,
@@ -234,6 +246,8 @@ export class Tower3D {
     private gridMesh: Mesh | null = null;
     private player!: Node;
     private body!: Node;
+    private cape: Node | null = null;
+    private capeT = 0;
     private limbs: Limb[] = [];
     private followYaw = 0;
     private camYaw = 0;
@@ -530,31 +544,33 @@ export class Tower3D {
         this.body.layer = Layers.Enum.DEFAULT;
         this.player.addChild(this.body);
 
-        // Torso, head, hair (facing -Z, i.e. into the wall; the camera sees the back).
-        const torso = new MeshBuilder();
-        torso.box(0, 0.95, 0, 0.56, 0.62, 0.32, COL.body);
-        torso.box(0, 0.58, 0, 0.5, 0.14, 0.3, COL.pants);
-        torso.box(0, 1.42, 0, 0.32, 0.34, 0.32, COL.skin);
-        torso.box(0, 1.6, 0.02, 0.34, 0.1, 0.34, COL.hair);
-        torso.box(0, 1.47, 0.12, 0.34, 0.26, 0.1, COL.hair);
-        this.addMesh('Torso', torso, this.body);
-
-        const limb = (name: string, x: number, y: number, len: number, w: number, color: Color, end: Color, sign: number, arm: boolean): void => {
-            const n = new Node(name);
+        // Robe, head and face, cape, arms and legs (facing -Z, i.e. into the wall; the camera
+        // sees the back). Arms are modelled reaching up, legs hanging down, from their pivots.
+        const swing: Record<string, [number, boolean]> = {
+            ArmL: [1, true], ArmR: [-1, true], LegL: [-1, false], LegR: [1, false],
+        };
+        for (const part of climberParts()) {
+            const mb = MeshBuilder.from(part.positions, part.colors, part.indices);
+            if (part.name === 'Torso') {
+                this.addMesh('Torso', mb, this.body);
+                continue;
+            }
+            const n = new Node(part.name);
             n.layer = Layers.Enum.DEFAULT;
             this.body.addChild(n);
-            n.setPosition(x, y, 0);
-            const mb = new MeshBuilder();
-            const dir = arm ? 1 : -1;
-            mb.box(0, dir * len / 2, 0, w, len, w, color);
-            mb.box(0, dir * (len + 0.06), arm ? 0 : -0.06, w * 1.1, 0.14, arm ? w * 1.1 : w * 1.6, end);
+            n.setPosition(part.pivot[0], part.pivot[1], part.pivot[2]);
             this.addMesh('Mesh', mb, n);
-            this.limbs.push({ node: n, sign, arm });
-        };
-        limb('ArmL', -0.36, 1.2, 0.6, 0.15, COL.body, COL.skin, 1, true);
-        limb('ArmR', 0.36, 1.2, 0.6, 0.15, COL.body, COL.skin, -1, true);
-        limb('LegL', -0.15, 0.55, 0.55, 0.18, COL.pants, COL.shoe, -1, false);
-        limb('LegR', 0.15, 0.55, 0.55, 0.18, COL.pants, COL.shoe, 1, false);
+            if (part.name === 'Cape') this.cape = n;
+            else this.limbs.push({ node: n, sign: swing[part.name][0], arm: swing[part.name][1] });
+        }
+    }
+
+    /** Cape sway: `lift` degrees out from the back plus a flutter; more while falling. */
+    private swayCape(dt: number, lift: number, flutter: number): void {
+        if (!this.cape) return;
+        this.capeT += dt;
+        const t = this.capeT;
+        this.cape.setRotationFromEuler(-(lift + flutter * (Math.sin(t * 3.1) + 0.4 * Math.sin(t * 7.3))), 0, 0);
     }
 
     /**
@@ -640,6 +656,9 @@ export class Tower3D {
             }
         }
 
+        if (standing) this.swayCape(dt, walking ? 14 : 4, walking ? 4 : 2);
+        else this.swayCape(dt, 8 + opts.tumble * 60, 3 + opts.tumble * 8);
+
         // Camera: follow the climber round the tower, plus the player's own orbit.
         this.followYaw += angleDelta(this.followYaw, p.yaw) * (1 - Math.exp(-dt * 5));
         if (opts.orbitInput !== 0) {
@@ -712,6 +731,9 @@ export class Tower3D {
             if (l.arm) l.node.setRotationFromEuler(165, 0, -l.sign * 25);
             else l.node.setRotationFromEuler(70 + Math.sin(t * 1.5 + l.sign) * 8, 0, l.sign * 6);
         }
+        // Wind at the top: the cape streams out behind.
+        this.capeT = t;
+        this.swayCape(0, 30, 6);
 
         const smooth = (x: number): number => {
             const k = Math.min(1, Math.max(0, x));
