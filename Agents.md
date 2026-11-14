@@ -66,6 +66,7 @@ GeneralClimb/
 金手指（設定頁）：`RUNGM` 開啟、`STOPGM` 關閉開發人員模式（`Settings.devMode` → `GameSession.devMode`），開啟時選關可選任一樓層關（尖塔 13–14 關仍鎖）；解析在 `core/CheatCodes.ts`、可選關卡規則在 `core/LevelAccess.ts`。開發人員模式在關卡左上有爬樓變速（`levels.json` 的 `dev.climbSpeeds`：×1／×1.5／×2／×3／×5，點擊或按 V 切換，存在 `Settings.devSpeed`），一般玩家固定 ×1。
 音效與 BGM（M4）：`core/Audio.ts` 用 Web Audio 即時合成（原創、無音檔），音效表 `SOUNDS`、曲子 `TRACKS`；`core/Sound.ts` 的 `sound()` 是共用引擎，跟著設定的音量／靜音。瀏覽器要等第一次點擊或按鍵才會出聲。
 窗內 NPC（M2）：`climb/CrowdPlan.ts`（純 TS：每關固定的窗位、種類、反應）＋`scenes/WindowCrowd.ts`（身體合成一個 mesh，只有手臂是節點）；只放在安全欄、整層無障礙的窗，尖塔不放。攀爬者靠近時揮手或拍照，有危險或墜落時擔心。共用網格工具在 `scenes/MeshKit.ts`。
+開場與過場（GDD §7、ADR-07）：時間與鏡頭數學在 `core/Cutscene.ts`（純 TS）。3 秒開場插畫 `ui/IntroOverlay.ts`（紅衣攀爬者背影＋天際線，慢慢放大後淡入主畫面）在 Home 上播放，每次開網頁只播一次（`GameSession.introPlayed`）；主畫面按開始遊戲或選關會設 `GameSession.pushIn`，Climb 先跑 2 秒鏡頭拉近塔底（`Tower3D.applyPushIn`，mode `intro`，不計時），墜落重來不再播。兩段都是點擊或按任意鍵略過（開頭 0.25 秒內不接受，避免同一下點擊直接跳過）。
 關卡中的「退出」（回主畫面，按 X 也可）只在該關起點（第 0 列）、暫停、墜落或結算畫面出現。
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService

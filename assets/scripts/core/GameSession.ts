@@ -10,4 +10,8 @@ export const GameSession = {
     mode: 'normal' as GameMode,
     /** Developer mode (cheat code RUNGM in Settings): any non-spire level can be picked. */
     devMode: false,
+    /** The 3 s opening has been shown (once per page load; GDD §7). */
+    introPlayed: false,
+    /** Home's start buttons set this; Climb plays the push-in to the tower base once, then clears it. */
+    pushIn: false,
 };
