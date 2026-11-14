@@ -79,6 +79,12 @@ export interface CrowdConfig {
     reactFloors: number;
     /** …and wave / take photos when the climber is this many columns away or closer. */
     waveCols: number;
+    /**
+     * From this level id up the tower narrows, so fewer floors get an NPC: the share of floors
+     * with one is `cols / refCols` (capped at 1), keeping the crowd density of the wider levels.
+     */
+    shrinkFromLevel: number;
+    refCols: number;
 }
 
 export interface LevelDef {
@@ -310,7 +316,7 @@ function checkLevels(c: Checker, root: Obj, widths: Obj): void {
         const width = c.str(raw, 'width', path);
         if (width && !isObj(widths[width])) c.fail(`${path}.width`, `unknown width "${width}"`);
         c.num(raw, 'windChance', path, { min: 0, max: 1 });
-        c.num(raw, 'obstaclesPer12Rows', path, { min: 0, int: true });
+        c.num(raw, 'obstaclesPer12Rows', path, { min: 0 });
         if (typeof raw.startPlatform !== 'boolean') c.fail(`${path}.startPlatform`, 'must be true or false');
 
         const floors = c.str(raw, 'floors', path);
@@ -372,6 +378,8 @@ function checkCrowd(c: Checker, root: Obj): void {
     c.num(w, 'minGap', '$.crowd', { min: 1, int: true });
     c.num(w, 'reactFloors', '$.crowd', { gt: 0 });
     c.num(w, 'waveCols', '$.crowd', { min: 0, int: true });
+    c.num(w, 'shrinkFromLevel', '$.crowd', { min: 1, int: true });
+    c.num(w, 'refCols', '$.crowd', { min: 1, int: true });
 }
 
 function checkPractice(c: Checker, root: Obj, widths: Obj): void {

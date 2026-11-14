@@ -156,7 +156,7 @@ export function hasSafeRoute(wall: Wall): boolean {
 
 /**
  * Builds the wall for one level. Each 12-row block gets `obstaclesPer12Rows` ungrabbable
- * cells per face; a candidate that would cut the safe route is rejected and re-rolled.
+ * cells per face (may be fractional: the block gets that times `faces`, rounded); a candidate that would cut the safe route is rejected and re-rolled.
  * Row 0 (the start row) never has obstacles. The climber starts in the middle of face 0.
  */
 export function buildWall(width: WidthConfig, level: LevelDef, rng: Rng, flare = { rows: 0, extra: 0 }, faces = 1): Wall {
@@ -178,7 +178,8 @@ export function buildWall(width: WidthConfig, level: LevelDef, rng: Rng, flare =
         const fromRow = Math.max(1, b * OBSTACLE_BLOCK_ROWS);
         const toRow = Math.min(level.rows - 1, (b + 1) * OBSTACLE_BLOCK_ROWS - 1);
         if (fromRow > toRow) continue;
-        for (let n = 0; n < level.obstaclesPer12Rows * faces; n++) {
+        const perBlock = Math.round(level.obstaclesPer12Rows * faces);
+        for (let n = 0; n < perBlock; n++) {
             for (let attempt = 0; attempt < 20; attempt++) {
                 const key = randInt(rng, fromRow, toRow) * wall.ring + randInt(rng, 0, wall.ring - 1);
                 if (obstacles.has(key)) continue;

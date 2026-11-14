@@ -34,6 +34,16 @@ export interface CrowdTuning {
     minGap: number;
     reactFloors: number;
     waveCols: number;
+    /** From this level id up, only `cols / refCols` of the floors get an NPC (narrower facade). */
+    shrinkFromLevel?: number;
+    refCols?: number;
+}
+
+/** Share of floors that get an NPC on this level: 1, or `cols / refCols` once the tower narrows. */
+export function crowdShare(cols: number, levelId: number, tuning: CrowdTuning): number {
+    const { shrinkFromLevel, refCols } = tuning;
+    if (shrinkFromLevel === undefined || refCols === undefined || levelId < shrinkFromLevel) return 1;
+    return Math.min(1, cols / refCols);
 }
 
 /** Small deterministic PRNG (mulberry32), so a level always gets the same crowd. */
@@ -66,7 +76,14 @@ export function planCrowd(
     const rnd = hashRng(levelId * 7919 + 101);
     const floors = Math.floor(wall.rows / rowsPerFloor);
     const out: NpcSpot[] = [];
+    // Narrow levels skip floors evenly so the share of floors with people matches the width.
+    // The skip doesn't touch rnd(), so wider levels keep exactly the crowd they had.
+    const share = crowdShare(wall.cols, levelId, tuning);
+    let acc = 0.5;
     for (let f = 0; f < floors; f++) {
+        acc += share;
+        if (acc < 1) continue;
+        acc -= 1;
         const free: number[] = [];
         for (let c = 0; c < wall.ring; c++) {
             let ok = true;
