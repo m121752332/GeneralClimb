@@ -1,6 +1,7 @@
 import { Color, Layers, Node } from 'cc';
 import type { ClimbSim } from '../climb/ClimbCore';
 import { isObstacle, zoneOf } from '../climb/ClimbCore';
+import { entranceCovers, faceU } from '../climb/EntranceShape';
 import { type CrowdTuning, type NpcKind, type NpcMood, type NpcSpot, npcMood, planCrowd } from '../climb/CrowdPlan';
 import { ROW_H, type Section, halfAt, surfacePoint } from '../climb/TowerShape';
 import { MeshBuilder, type V3 } from './MeshKit';
@@ -110,12 +111,19 @@ export class WindowCrowd {
         this.node = null;
     }
 
+    /** True when the cell's window is hidden by the entrance (doors, canopy, stone portal). */
+    private behindEntrance(wall: ClimbSim['wall'], col: number, y: number): boolean {
+        if (wall.faces <= 1) return false;
+        const half = halfAt(this.sections, y);
+        return entranceCovers(faceU(col + 0.5, wall.cols, half), half / wall.cols, y, y + ROW_H);
+    }
+
     /** Places the crowd for the sim's level; baseY is the world y of its row 0. */
     build(sim: ClimbSim, baseY: number): void {
         this.clear();
         const { wall, level } = sim;
         const spots = planCrowd(wall, this.rowsPerFloor, level.id, this.tuning,
-            (c, r) => zoneOf(wall, c, r) === 'safe' && !isObstacle(wall, c, r));
+            (c, r) => zoneOf(wall, c, r) === 'safe' && !isObstacle(wall, c, r) && !this.behindEntrance(wall, c, baseY + r * ROW_H));
         if (spots.length === 0) return;
         this.node = new Node('WindowCrowd');
         this.node.layer = Layers.Enum.DEFAULT;
