@@ -1,6 +1,7 @@
 import {
     _decorator, BlockInputEvents, Color, Component, EventKeyboard, Graphics, Input, Node, UIOpacity, input,
 } from 'cc';
+import { lang, t } from '../core/I18n';
 import { INTRO_SEC, SKIP_GRACE_SEC, introFrame } from '../core/Cutscene';
 import { buildBackdrop } from '../scenes/HomeBackdrop';
 import { hex, makeLabel, makeNode, roundRect } from './UiKit';
@@ -177,13 +178,13 @@ export function playIntro(root: Node, onDone: () => void): void {
     drawRooftop(art);
     drawClimber(art);
 
-    makeLabel(overlay, '從 1F 徒手爬上塔尖', 40, Color.WHITE, {
+    makeLabel(overlay, t('intro.tagline'), 40, Color.WHITE, {
         y: 470, bold: true, outline: hex('#2a0d3a'), outlineWidth: 4, shadow: hex('#ff5a3c', 200),
     });
     // Bottom right, clear of the climber, on a dark pill so it reads over the rooftop.
     const pill = makeNode('SkipHint', overlay, 0, 0, 175, -575);
     roundRect(pill.addComponent(Graphics), 320, 52, 26, hex('#0b1024', 200), hex('#8fa6ff', 160), 2);
-    makeLabel(pill, '點擊或按任意鍵略過 ▶▶', 24, hex('#e8ecff'), { y: 1 });
+    makeLabel(pill, t('common.skip'), lang() === 'en' ? 20 : 24, hex('#e8ecff'), { y: 1 });
     pill.active = false;
     overlay.addComponent(IntroPlayer).setup(art, opacity, pill, onDone);
 }

@@ -1,5 +1,6 @@
 import { Color, EditBox, Graphics, Label, Node, Slider, Sprite, UITransform } from 'cc';
 import { parseCheat } from '../core/CheatCodes';
+import { t } from '../core/I18n';
 import { settings } from '../core/Settings';
 import { STYLE, hex, makeButton, makeLabel, makeNode, makeSwitch, openModal, roundRect } from './UiKit';
 
@@ -66,7 +67,7 @@ function makeCheatInput(parent: Node, w: number, h: number, x: number, y: number
     box.inputFlag = EditBox.InputFlag.INITIAL_CAPS_ALL_CHARACTERS;
     box.returnType = EditBox.KeyboardReturnType.DONE;
     box.maxLength = 16;
-    box.placeholder = '輸入指令';
+    box.placeholder = t('settings.cheatPlaceholder');
     for (const l of [box.textLabel, box.placeholderLabel]) {
         if (!l) continue;
         l.fontSize = 28;
@@ -112,14 +113,14 @@ function uppercaseInPlace(box: EditBox): void {
 }
 
 export function openSettings(root: Node, hooks: SettingsPanelHooks): void {
-    const modal = openModal(root, '設定', W, H, hooks.onClose);
+    const modal = openModal(root, t('settings.title'), W, H, hooks.onClose);
     const p = modal.panel;
     const s = settings().get();
     const labelX = -W / 2 + 56;
     const rowLabel = (text: string, y: number): Label => leftAlign(makeLabel(p, text, 32, Color.WHITE, { x: labelX, y, bold: true }));
 
     const yVol = H / 2 - 160;
-    rowLabel('音量', yVol);
+    rowLabel(t('settings.volume'), yVol);
     const pct = makeLabel(p, `${Math.round(s.volume * 100)}%`, 28, hex('#ffc94a'), { x: W / 2 - 70, y: yVol, bold: true });
     makeVolumeSlider(p, s.volume, 30, yVol, (v) => {
         settings().set({ volume: v });
@@ -128,13 +129,13 @@ export function openSettings(root: Node, hooks: SettingsPanelHooks): void {
     });
 
     const yVib = yVol - 100;
-    rowLabel('震動', yVib);
+    rowLabel(t('settings.vibration'), yVib);
     makeSwitch(p, s.vibration, (v) => { settings().set({ vibration: v }); hooks.onChange(); }, W / 2 - 110, yVib);
 
     const yFlash = yVib - 100;
-    rowLabel('閃光效果', yFlash);
+    rowLabel(t('settings.flash'), yFlash);
     makeSwitch(p, s.flashEffects, (v) => { settings().set({ flashEffects: v }); hooks.onChange(); }, W / 2 - 110, yFlash);
-    leftAlign(makeLabel(p, '對閃光敏感可關閉閃電與危機閃爍', 20, hex('#9aa6d8'), { x: labelX, y: yFlash - 44 }));
+    leftAlign(makeLabel(p, t('settings.flashHint'), 20, hex('#9aa6d8'), { x: labelX, y: yFlash - 44 }));
 
     // 金手指: cheat code input + developer-mode status.
     const yCheat = yFlash - 130;
@@ -142,14 +143,14 @@ export function openSettings(root: Node, hooks: SettingsPanelHooks): void {
     divider.rect(-W / 2 + 40, 0, W - 80, 2);
     divider.fillColor = hex('#8fa6ff', 70);
     divider.fill();
-    rowLabel('金手指', yCheat);
+    rowLabel(t('settings.cheat'), yCheat);
     const input = makeCheatInput(p, 220, 64, 10, yCheat);
 
     const yStatus = yCheat - 80;
     const status = makeNode('DevStatus', p, 0, 0, 0, yStatus);
-    const statusLabel = leftAlign(makeLabel(status, '開發人員模式：開啟', 26, hex('#5fe39a'), { x: labelX, bold: true }));
+    const statusLabel = leftAlign(makeLabel(status, t('settings.devOn'), 26, hex('#5fe39a'), { x: labelX, bold: true }));
     statusLabel.node.setPosition(labelX, 0);
-    makeButton(status, '關閉', 120, 56, { ...STYLE.secondary, fontSize: 26, radius: 16 }, () => setDevMode(false), W / 2 - 110, 0);
+    makeButton(status, t('settings.devOff'), 120, 56, { ...STYLE.secondary, fontSize: 26, radius: 16 }, () => setDevMode(false), W / 2 - 110, 0);
 
     const refreshStatus = (): void => {
         status.active = settings().get().devMode;
@@ -158,19 +159,19 @@ export function openSettings(root: Node, hooks: SettingsPanelHooks): void {
         settings().set({ devMode: on });
         refreshStatus();
         hooks.onChange();
-        hooks.toast(on ? '開發人員模式已開啟' : '開發人員模式已關閉');
+        hooks.toast(t(on ? 'settings.devOnToast' : 'settings.devOffToast'));
     };
     const submit = (): void => {
         const action = parseCheat(input.string);
         if (action === 'empty') return;
         if (action === 'devModeOn') setDevMode(true);
         else if (action === 'devModeOff') setDevMode(false);
-        else hooks.toast('無效指令');
+        else hooks.toast(t('settings.badCode'));
         input.string = '';
     };
-    makeButton(p, '輸入', 120, 64, { ...STYLE.gold, fontSize: 28 }, submit, W / 2 - 110, yCheat);
+    makeButton(p, t('settings.enter'), 120, 64, { ...STYLE.gold, fontSize: 28 }, submit, W / 2 - 110, yCheat);
     input.node.on(EditBox.EventType.EDITING_RETURN, submit);
     refreshStatus();
 
-    makeButton(p, '完成', 240, 80, STYLE.primary, modal.close, 0, -H / 2 + 70).label.fontSize = 34;
+    makeButton(p, t('settings.done'), 240, 80, STYLE.primary, modal.close, 0, -H / 2 + 70).label.fontSize = 34;
 }

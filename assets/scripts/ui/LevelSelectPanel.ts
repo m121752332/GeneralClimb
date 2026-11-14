@@ -1,5 +1,6 @@
 import { Color, Node } from 'cc';
 import type { LevelConfig, LevelDef } from '../config/LevelConfig';
+import { levelName, t } from '../core/I18n';
 import { levelAccess } from '../core/LevelAccess';
 import { STYLE, hex, makeButton, makeLabel, openModal } from './UiKit';
 
@@ -10,7 +11,7 @@ const GAP = 14;
 
 function floorText(level: LevelDef): string {
     if (level.floorFrom !== null && level.floorTo !== null) return `${level.floorFrom}–${level.floorTo}F`;
-    return '塔尖';
+    return t('floors.tip');
 }
 
 /**
@@ -33,13 +34,13 @@ export function openLevelSelect(
     const gridH = rows * CELL_H + (rows - 1) * GAP;
     const w = gridW + 64;
     const h = gridH + 200;
-    const modal = openModal(root, devMode ? '選擇關卡 · GM' : '選擇關卡', w, h, onClose);
+    const modal = openModal(root, t(devMode ? 'levels.titleGm' : 'levels.title'), w, h, onClose);
 
     const hint = devMode
-        ? '開發人員模式：可從任一關開始（不計紀錄）'
+        ? t('levels.hintDev')
         : unlocked > 0
-            ? `${roundText} · 已解鎖到第 ${unlocked + 1} 關，墜落就全部重來`
-            : `${roundText ? `${roundText} · ` : ''}破一關開一關，墜落回 1F 重新上鎖`;
+            ? t('levels.hintUnlocked', { round: roundText, n: unlocked + 1 })
+            : roundText ? t('levels.hintFreshRound', { round: roundText }) : t('levels.hintFresh');
     makeLabel(modal.panel, hint, 22, devMode ? hex('#5fe39a') : hex('#c9d3ff'), { y: h / 2 - 122 });
 
     const top = h / 2 - 150;
@@ -56,13 +57,13 @@ export function openLevelSelect(
                 modal.close();
                 onStart(i);
             } else {
-                onLocked(access === 'spire' ? '尖塔關卡尚未開放' : `尚未解鎖：先破第 ${i} 關`);
+                onLocked(access === 'spire' ? t('levels.spireLocked') : t('levels.locked', { n: i }));
             }
         }, x, y);
         btn.label.node.setPosition(0, 26);
         const sub = i === 0 ? hex('#3a2400') : open ? hex('#e8ecff') : hex('#9aa0bf');
         makeLabel(btn.node, floorText(level), 22, sub, { y: -14, bold: true });
-        makeLabel(btn.node, level.name, 18, sub, { y: -40 });
+        makeLabel(btn.node, levelName(level.name), 18, sub, { y: -40 });
         if (!open) makeLabel(btn.node, '🔒', 22, Color.WHITE, { x: CELL_W / 2 - 22, y: CELL_H / 2 - 24 });
     });
 }

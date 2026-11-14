@@ -3,6 +3,7 @@
  * Pure TypeScript (no `cc`). The result screen writes it; Home only reads it.
  */
 import type { StorageLike } from './Settings';
+import { t } from './I18n';
 
 export const BEST_KEY = 'gcr.best.v1';
 /** GDD §8: maxFloor 102 means the spire tip. */
@@ -37,11 +38,11 @@ function formatDuration(ms: number): string {
 
 /** Home screen text, e.g. 「最佳紀錄：47F」 or 「最佳紀錄：登頂 12:34」. */
 export function formatBest(best: LocalBest | null): string {
-    if (!best) return '最佳紀錄：尚無紀錄';
+    if (!best) return t('best.none');
     if (best.maxFloor >= SPIRE_TIP_FLOOR) {
-        return best.bestClearMs ? `最佳紀錄：登頂 ${formatDuration(best.bestClearMs)}` : '最佳紀錄：登頂';
+        return best.bestClearMs ? t('best.summitTime', { time: formatDuration(best.bestClearMs) }) : t('best.summit');
     }
-    return `最佳紀錄：${best.maxFloor}F`;
+    return t('best.floor', { floor: best.maxFloor });
 }
 
 export function readLocalBest(storage: StorageLike | null): LocalBest | null {

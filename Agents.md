@@ -70,6 +70,7 @@ GeneralClimb/
 開場與過場（GDD §7、ADR-07）：時間與鏡頭數學在 `core/Cutscene.ts`（純 TS）。3 秒開場插畫 `ui/IntroOverlay.ts`（紅衣攀爬者背影＋天際線，慢慢放大後淡入主畫面）在 Home 上播放，每次開網頁只播一次（`GameSession.introPlayed`）；主畫面按開始遊戲或選關會設 `GameSession.pushIn`，Climb 先跑 2 秒鏡頭拉近塔底（`Tower3D.applyPushIn`，mode `intro`，不計時），墜落重來不再播。兩段都是點擊或按任意鍵略過（開頭 0.25 秒內不接受，避免同一下點擊直接跳過）。
 塔底大門：101 每面中央都有大門（玻璃門、通高石材門柱＋如意雲紋、弧形灰色金屬雨遮），塔底是石板廣場；尺寸與純函式在 `climb/EntranceShape.ts`，網格在 `scenes/Entrance.ts`。爬過雨遮高度時將軍會往外掛到雨遮前緣（`canopyClearance`），門與石柱後面的窗不放 NPC。平房（練習）不套用。
 關卡進度（ADR-06 修訂）：`core/Progress.ts`（純 TS，localStorage `gcr.progress.v1`）記錄已解鎖到第幾關、周目數、登頂次數；破一關開一關（退出後可從選關接著玩），墜落回 1F 時解鎖重置，看完登頂動畫重置解鎖並累加周目。主頁顯示「第 N 周目 · 已登頂 X 次」，選關依 `LevelAccess` 的 `unlocked` 開鎖。墜落與登頂時寫入本機最佳紀錄（`LocalBest.recordLocalBest`）。練習與開發人員模式都不記錄。
+語言與全螢幕：主畫面右上（音量鈕左邊）的膠囊「🌐 中文 / EN ｜ 全螢幕」。所有玩家看得到的文字都在 `core/I18n.ts`（純 TS，`t('key', { var })`；`zh-TW` 預設、`en`），兩種語言的 key 與 `{佔位}` 必須一致（`tests/i18n.test.ts` 檢查）；levels.json 的關卡名稱維持中文，英文名在 `I18n` 的 `translateLevelName`。選擇存在 `Settings.lang`，切換時重新載入 Home 場景。全螢幕在 `core/Fullscreen.ts`（含 WebKit 前綴）；iPhone Safari 沒有全螢幕 API，按下時提示「分享 → 加入主畫面」，已從主畫面開啟（standalone）時提示已是全螢幕。
 關卡中的「退出」（回主畫面，按 X 也可）只在該關起點（第 0 列）、暫停、墜落或結算畫面出現。
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService
@@ -79,7 +80,7 @@ Components：InputController、RiskSystem、EventScheduler、WeatherSystem、Eag
 - 設計解析度 720 × 1280；`assets/scripts/core/ScreenFit.ts` 依螢幕比例切換 FIXED_WIDTH / FIXED_HEIGHT。
 - 功能裁剪（`settings/v2/packages/engine.json`）：2D 模組加上 `3d`（MeshRenderer、程式產生網格）；要用物理、Spine、TiledMap、RichText 等再打開。3D 一律用頂點色 unlit 材質 `resources/materials/vertex-color.mtl`。
 - 像素素材匯入後 Filter Mode 一律設 Nearest。
-- `npm test`：`node --test` 跑 `tests/`，直接執行 `.ts`，需要 Node 22.18 以上（內建 type stripping）。
+- `npm test`：`node --test` 跑 `tests/`，直接執行 `.ts`，需要 Node 22.18 以上（內建 type stripping）；`tools/ts-resolve.mjs` 讓純 TS 模組之間不帶副檔名的 import（如 `from './I18n'`）在 Node 也能解析。
 - `npm run sync:levels`：用 `config/levels.json` 覆蓋 `assets/resources/config/levels.json`。
 - `npm run build:web`：用 Cocos Creator CLI 依 `tools/build-web-mobile.json` 建置到 `build/web-mobile`（直式、md5Cache）。**先關閉這個專案的編輯器**。編輯器路徑預設 `C:/ProgramData/cocos/editors/Creator/3.8.8/CocosCreator.exe`，可用環境變數 `COCOS_CREATOR` 覆蓋；CLI 成功的結束碼是 36，失敗看 `temp/builder/log`。
 - `npm run serve`：本機預覽 `build/web-mobile`，http://localhost:8101（`node tools/serve.mjs site` 可改看 `site/`）。

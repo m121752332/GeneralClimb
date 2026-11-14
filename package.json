@@ -6,7 +6,7 @@
   },
   "private": true,
   "scripts": {
-    "test": "node --test \"tests/**/*.test.ts\"",
+    "test": "node --import ./tools/ts-resolve.mjs --test \"tests/**/*.test.ts\"",
     "sync:levels": "node tools/sync-levels.mjs",
     "build:web": "node tools/build-web.mjs",
     "publish:site": "node tools/publish-site.mjs",
