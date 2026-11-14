@@ -4,6 +4,7 @@
  * imports) so it runs under plain `node --test`. Every tunable number comes from levels.json.
  */
 import type { EventKind, EventsConfig, LevelConfig, LevelDef, PagodaFlareConfig, WidthConfig } from '../config/LevelConfig';
+import { t } from '../core/I18n';
 
 // ---------------------------------------------------------------- Practice (GDD §7)
 
@@ -333,13 +334,10 @@ export interface EagleDive {
     row: number;
 }
 
-/** GDD 7 fall messages. */
-export const FALL_TEXT: Record<FallCause, string> = {
-    edge: '太靠邊了…',
-    wind: '風大時要抓牢',
-    rain: '雨天手滑了',
-    eagle: '被老鷹撲下來了',
-};
+/** GDD 7 fall messages, in the player's language (core/I18n `fall.*`). */
+export function fallText(cause: FallCause): string {
+    return t(`fall.${cause}`);
+}
 
 /** What a run carries from one level into the next (ADR-03: risk is not reset between levels). */
 export interface RunCarry {

@@ -3,6 +3,7 @@
  * Pure TypeScript (no `cc`) so it can be unit-tested with plain Node.
  * Storage failures (private mode, blocked storage, corrupt JSON) fall back to defaults.
  */
+import type { Lang } from './I18n';
 
 export interface SettingsData {
     /** Master volume, 0-1. */
@@ -15,6 +16,8 @@ export interface SettingsData {
     devMode: boolean;
     /** Climb speed picked in developer mode (one of levels.json dev.climbSpeeds). */
     devSpeed: number;
+    /** UI language (core/I18n), switched on Home. */
+    lang: Lang;
 }
 
 /** The subset of the Web Storage API this module uses. */
@@ -32,6 +35,7 @@ export const DEFAULT_SETTINGS: Readonly<SettingsData> = Object.freeze({
     muted: false,
     devMode: false,
     devSpeed: 1,
+    lang: 'zh-TW',
 });
 
 function clamp01(v: number): number {
@@ -49,6 +53,7 @@ export function normalizeSettings(raw: unknown): SettingsData {
     if (typeof r.muted === 'boolean') out.muted = r.muted;
     if (typeof r.devMode === 'boolean') out.devMode = r.devMode;
     if (typeof r.devSpeed === 'number' && Number.isFinite(r.devSpeed) && r.devSpeed > 0) out.devSpeed = r.devSpeed;
+    if (r.lang === 'zh-TW' || r.lang === 'en') out.lang = r.lang;
     return out;
 }
 

@@ -4,6 +4,7 @@
  * runner stops at the first failure so Boot can show the error and offer a retry.
  */
 import type { LevelConfig } from '../config/LevelConfig';
+import { t } from './I18n';
 
 export type StageState = 'waiting' | 'loading' | 'done' | 'failed';
 
@@ -124,7 +125,7 @@ export function describeWeather(cfg: LevelConfig): string {
     }
     const chances = cfg.levels.map((l) => l.windChance);
     if (chances.some((c) => !(c >= 0 && c <= 1))) issues.push('levels[].windChance must be 0–1');
-    if (issues.length) throw new Error(`天氣參數錯誤：${issues.join('；')}`);
+    if (issues.length) throw new Error(t('boot.weatherBad', { issues: issues.join('; ') }));
     const pct = (v: number): string => `${Math.round(v * 100)}%`;
-    return `風／雨／鷹 OK，強風 ${pct(Math.min(...chances))}–${pct(Math.max(...chances))}`;
+    return t('boot.weatherOk', { lo: pct(Math.min(...chances)), hi: pct(Math.max(...chances)) });
 }
