@@ -1,6 +1,6 @@
-import { Layers, Node, Vec3 } from 'cc';
+import { Layers, Mat4, Node, Vec3 } from 'cc';
 import type { ClimbSim } from '../climb/ClimbCore';
-import { eagleParts } from '../climb/EagleShape';
+import { EYE, eagleParts } from '../climb/EagleShape';
 import { MeshBuilder } from './MeshKit';
 import type { MakeMesh } from './WindowCrowd';
 
@@ -29,7 +29,7 @@ const APPROACH_SEC = 1.1;
 const EXIT_SEC = 1.3;
 const LEAVE_SEC = 1.6;
 
-type State = 'hidden' | 'circle' | 'dive' | 'exit' | 'leave';
+type State = 'hidden' | 'circle' | 'glare' | 'dive' | 'exit' | 'leave';
 
 export interface EagleFrame {
     /** Climber's feet (world). */
@@ -45,6 +45,7 @@ export class Eagle3D {
     private readonly wingL: Node;
     private readonly wingR: Node;
     private readonly legs: Node;
+    private readonly glow: Node;
     private readonly meshes: { destroy(): void }[] = [];
     private state: State = 'hidden';
     private t = 0;
@@ -58,6 +59,8 @@ export class Eagle3D {
     private readonly vel = new Vec3();
     private readonly tmp = new Vec3();
     private readonly up = new Vec3();
+    private readonly mat = new Mat4();
+    private readonly eyeLocal = new Vec3(0, EYE[1], EYE[2]);
 
     constructor(parent: Node, make: MakeMesh) {
         this.node = new Node('Eagle');
@@ -79,6 +82,8 @@ export class Eagle3D {
         this.wingL = nodes.WingL;
         this.wingR = nodes.WingR;
         this.legs = nodes.Legs;
+        this.glow = nodes.Glow;
+        this.glow.active = false;
         this.node.active = false;
     }
 
@@ -94,6 +99,7 @@ export class Eagle3D {
         const s = sim.scheduler;
         const event = s.kind === 'eagle' && (s.state === 'warning' || s.state === 'active') && sim.phase === 'climbing';
         const dive = sim.eagleDive;
+        const glaring = sim.eagleGlareSec > 0 && !dive && sim.phase === 'climbing';
         const n = this.tmp.set(Math.sin(f.yaw), 0, Math.cos(f.yaw));
         const nx = n.x, nz = n.z;
         this.prev.set(this.pos);
@@ -104,12 +110,20 @@ export class Eagle3D {
             f.aim(dive.col, dive.row, this.to);
             this.enter('dive');
         }
+        if (glaring && this.state !== 'glare') {
+            if (this.state === 'hidden') this.circlePoint(f, nx, nz, 1, this.pos);
+            this.from.set(this.pos);
+            this.enter('glare');
+        }
         switch (this.state) {
             case 'hidden':
                 if (event) this.enter('circle');
                 break;
             case 'circle':
                 if (!event) this.enter('leave');
+                break;
+            case 'glare':
+                if (!glaring && !dive) this.enter(event ? 'circle' : 'leave');
                 break;
             case 'dive':
                 if (!dive || dive.t >= 1) {
@@ -153,6 +167,14 @@ export class Eagle3D {
             up.set(cx - this.pos.x, 2.2, cz - this.pos.z).normalize();
             const flap = Math.sin(this.t * (k < 1 ? 9 : 6)) * (k < 1 ? 30 : 16 * (0.4 + 0.6 * Math.max(0, Math.sin(this.t * 0.9))));
             roll = 6 + flap;
+        } else if (this.state === 'glare') {
+            // Locked on: rear up and hang in the air glaring at the climber, beating hard.
+            const k = Math.min(1, this.sec / 0.35);
+            this.pos.set(this.from.x + nx * 0.6 * k, this.from.y + 0.8 * k + Math.sin(this.t * 9) * 0.12, this.from.z + nz * 0.6 * k);
+            f.aim(sim.col, Math.min(sim.row, sim.wall.rows - 1), this.to);
+            roll = 15 + Math.sin(this.t * 14) * 38;
+            sweep = 6;
+            legs = 30;
         } else if (this.state === 'dive') {
             const u = Math.pow(dive ? dive.t : 1, 1.5);
             // Bow outward towards the camera, so the stoop reads from the usual view.
@@ -184,13 +206,22 @@ export class Eagle3D {
         }
         this.node.setWorldPosition(this.pos);
         // Face the way it is flying (the model's beak is -Z, which lookAt points at the target).
-        const look = this.state === 'dive'
+        const look = this.state === 'dive' || this.state === 'glare'
             ? this.to
             : Vec3.add(new Vec3(), this.pos, Vec3.subtract(new Vec3(), this.pos, this.prev));
         if (Vec3.squaredDistance(look, this.pos) > 1e-8) this.node.lookAt(look, up);
         this.wingR.setRotationFromEuler(0, sweep, roll);
         this.wingL.setRotationFromEuler(0, -sweep, -roll);
         this.legs.setRotationFromEuler(legs, 0, 0);
+        // Red eyes from the moment it locks on until the dive has struck.
+        this.glow.active = this.state === 'glare' || (this.state === 'dive' && Math.floor(this.t * 16) % 3 !== 0);
+    }
+
+    /** World position of the eagle's eyes while it glares (for the 2D flare), else null. */
+    glareEyes(out: Vec3): Vec3 | null {
+        if (this.state !== 'glare' && this.state !== 'dive') return null;
+        this.node.getWorldMatrix(this.mat);
+        return Vec3.transformMat4(out, this.eyeLocal, this.mat);
     }
 
     destroy(): void {

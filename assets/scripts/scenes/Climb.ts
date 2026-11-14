@@ -92,7 +92,7 @@ const EVENT_LABEL = { wind: '風', rain: '雨', eagle: '鷹' } as const;
 const PRACTICE_TIP = {
     wind: '強風來了！放開方向鍵抓牢\n亂動會被吹向轉角（危險區）',
     rain: '下雨了！手會滑\n完全停下，等雨停再爬',
-    eagle: '老鷹來了！不要動\n亂動會被牠俯衝撲下去',
+    eagle: '老鷹來了！完全不要動\n一動就會被牠紅眼盯上撲下來',
 } as const;
 /** Practice tip sits under the HUD band. */
 const TIP_TOP = 250;
@@ -159,6 +159,7 @@ export class Climb extends Component {
     /** Climber's screen position (Canvas space), for the name tag and the eagle. */
     private playerUi = new Vec3();
     private tmpV = new Vec3();
+    private eyeUi = new Vec3();
     private fallSec = 0;
     /** World y of the climber's feet while falling. */
     private fallY = 0;
@@ -315,7 +316,7 @@ export class Climb extends Component {
             this.hideOverlay();
         }
         if (this.mode === 'play') {
-            const before = { stepping: sim.stepping, stepT: sim.stepT, gripping: sim.gripping, event: sim.scheduler.state, dive: sim.eagleDive !== null };
+            const before = { stepping: sim.stepping, stepT: sim.stepT, gripping: sim.gripping, event: sim.scheduler.state, dive: sim.eagleDive !== null, glare: sim.eagleGlareSec > 0 };
             sim.update(dt, dir);
             this.playSimSounds(sim, before);
             if (sim.phase === 'fallen') this.beginFall();
@@ -331,11 +332,12 @@ export class Climb extends Component {
     }
 
     /** Effects for what changed during this frame's update (GDD §9 sounds, M4). */
-    private playSimSounds(sim: ClimbSim, before: { stepping: boolean; stepT: number; gripping: boolean; event: string; dive: boolean }): void {
+    private playSimSounds(sim: ClimbSim, before: { stepping: boolean; stepT: number; gripping: boolean; event: string; dive: boolean; glare: boolean }): void {
         const sfx = sound();
         // A new cell: starting from rest, or the next step began while holding the key (stepT wrapped).
         if (sim.stepping && (!before.stepping || sim.stepT < before.stepT)) sfx.play('step');
         else if (sim.gripping && !before.gripping) sfx.play('grip');
+        if (sim.eagleGlareSec > 0 && !before.glare) sfx.play('eagleSpot');
         if (sim.eagleDive && !before.dive) sfx.play('eagleDive');
         const sched = sim.scheduler;
         if (sched.state === 'warning' && before.event !== 'warning' && sched.kind) {
@@ -783,7 +785,7 @@ export class Climb extends Component {
         const fx = this.fxG;
         fx.clear();
         // A dive that outlasts the event (it is still deadly) keeps the eagle icon up.
-        const diving = sim.eagleDive !== null && sim.eagleDive.t < 1 && sim.phase === 'climbing';
+        const diving = (sim.eagleGlareSec > 0 || (sim.eagleDive !== null && sim.eagleDive.t < 1)) && sim.phase === 'climbing';
         const kind = diving ? 'eagle' : s.state === 'warning' || s.state === 'active' ? s.kind : null;
         const strength = s.state === 'active' ? 1 : s.state === 'warning' ? 0.35 : 0;
         if (kind === 'rain') {
@@ -827,6 +829,38 @@ export class Climb extends Component {
             fx.stroke();
         }
         // The eagle itself is 3D (Eagle3D in Tower3D): circling, diving at the climber, pulling away.
+        // Locked on (red eyes): a red flash over the screen and a glowing flare on its eyes.
+        const eyes = this.mode === 'play' || this.mode === 'paused' ? tower.eagleEyes(this.tmpV) : null;
+        if (eyes) {
+            const glare = sim.eagleGlareSec > 0;
+            const pulse = 0.5 + 0.5 * Math.sin(this.elapsed * 18);
+            if (glare) {
+                fx.fillColor = new Color(200, 0, 0, Math.round(30 + 40 * pulse));
+                fx.rect(left, bottom, vs.width, vs.height);
+                fx.fill();
+            }
+            tower.camera.convertToUINode(eyes, this.node, this.eyeUi);
+            const ex = this.eyeUi.x, ey = this.eyeUi.y;
+            const r = (glare ? 26 : 18) + 8 * pulse;
+            for (const [k, a] of [[2.4, 50], [1.6, 90], [1, 200]] as const) {
+                fx.fillColor = new Color(255, 40, 20, a);
+                fx.circle(ex, ey, r * k);
+                fx.fill();
+            }
+            fx.strokeColor = new Color(255, 120, 60, 230);
+            fx.lineWidth = 4;
+            const spin = this.elapsed * 3;
+            for (let i = 0; i < 8; i++) {
+                const a = spin + (i * Math.PI) / 4;
+                const len = r * (i % 2 === 0 ? 3.2 : 2.2);
+                fx.moveTo(ex + Math.cos(a) * r * 1.1, ey + Math.sin(a) * r * 1.1);
+                fx.lineTo(ex + Math.cos(a) * len, ey + Math.sin(a) * len);
+            }
+            fx.stroke();
+            fx.fillColor = new Color(255, 245, 220, 255);
+            fx.circle(ex, ey, r * 0.35);
+            fx.fill();
+        }
         // Edge vignette (GDD 6).
         if (sim.tier !== 'safe' || this.mode === 'falling') {
             const blink = sim.tier === 'crisis' ? 0.5 + 0.5 * Math.sin(this.elapsed * 12) : 1;

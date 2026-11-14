@@ -68,11 +68,12 @@ test('practice: rushing straight up never skips a demo; the roof waits for them'
     for (let seed = 1; seed <= 20; seed++) {
         const sim = new ClimbSim(c, 0, seed, undefined, true);
         const seen: string[] = [];
-        // Hold Up the whole time (only pausing in rain, which would make the climber fall).
+        // Hold Up the whole time (only pausing for rain and the eagle, which would knock the climber off).
         for (let t = 0; t < 300 && sim.phase === 'climbing'; t += FRAME) {
             const s = sim.scheduler;
             if (s.state === 'warning' && s.kind && seen[seen.length - 1] !== s.kind) seen.push(s.kind);
-            const stop = s.activeKind === 'rain' || s.activeKind === 'eagle';
+            // The eagle locks on to any move once it is out, so let go while it warns too.
+            const stop = s.activeKind === 'rain' || s.kind === 'eagle' && (s.state === 'warning' || s.state === 'active');
             sim.update(FRAME, stop ? NO_DIR : UP);
         }
         assert.equal(sim.phase, 'cleared', `seed ${seed}: ${sim.fallCause}`);
@@ -153,4 +154,20 @@ test('house sections: one straight block from the ground to the top of the last 
     assert.ok(Math.abs(s[0].y1 - (LIFT + 36 * ROW_H)) < 1e-9);
     assert.equal(halfAt(s, 3), HOUSE_HALF);
     assert.equal(halfAt(s, 100), HOUSE_HALF);
+});
+
+test('practice eagle: moving while it is out locks it on (red eyes), then it always dives', () => {
+    const c = cfg();
+    const sim = new ClimbSim(c, 0, 4, undefined, true);
+    sim.row = 20;
+    sim.scheduler.trigger('eagle');
+    run(sim, c.events.warningSec + 0.05);
+    assert.equal(sim.scheduler.activeKind, 'eagle');
+    sim.update(FRAME, { dx: 0, dy: 1 });
+    assert.ok(sim.eagleGlareSec > 0, 'one move is enough');
+    assert.ok(Math.abs(sim.eagleGlareSec - c.events.eagle.spotSec / c.practice.intensity) < 0.05);
+    run(sim, c.events.eagle.spotSec / c.practice.intensity + 0.05);
+    assert.ok(sim.eagleDive, 'dives even though the climber froze');
+    run(sim, c.events.eagle.diveSec + 0.05);
+    assert.equal(sim.fallCause, 'eagle');
 });

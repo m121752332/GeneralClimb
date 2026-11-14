@@ -4,7 +4,7 @@ import { EAGLE_SPAN, eagleParts } from '../assets/scripts/climb/EagleShape.ts';
 
 test('eagle: body, two spread wings and talons, well-formed buffers', () => {
     const parts = eagleParts();
-    assert.deepEqual(parts.map((p) => p.name), ['Body', 'WingL', 'WingR', 'Legs']);
+    assert.deepEqual(parts.map((p) => p.name), ['Body', 'WingL', 'WingR', 'Legs', 'Glow']);
     let tris = 0;
     for (const p of parts) {
         const verts = p.positions.length / 3;

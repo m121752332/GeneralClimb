@@ -82,7 +82,7 @@
 
 狀態：`Idle` → `Warning`（左上圖示 1 秒）→ `Active` → `Cooldown`（4 秒）→ `Idle`。只有 `Idle` 可進入 `Warning`。
 
-老鷹（2026-11-14 修訂）：3D 原創展翅老鷹（`climb/EagleShape.ts`、`scenes/Eagle3D.ts`），警告時從側面盤旋飛近，進行中在攀爬者前上方盤旋。移動累計 `spotSec` 被發現 → 鎖定玩家當下那一格俯衝（`diveSec`，翅膀上舉成 V、爪子前伸），俯衝一旦開始停下也來不及；落點時玩家在 `hitCols` 欄、`hitRows` 列內（含相鄰一欄的擦身）→ 撲落、回 1F（練習模式回平房地面重練）；已閃到更遠就撲空，老鷹拉起 `diveSec` 秒後才會再盯人。數值在 `levels.json` 的 `events.eagle`。
+老鷹（2026-11-14 修訂）：3D 原創展翅老鷹（`climb/EagleShape.ts`、`scenes/Eagle3D.ts`），警告時從側面盤旋飛近，進行中在攀爬者前上方盤旋。老鷹在場時只要一移動就被發現（2026-11-14 第二次修訂）：紅眼鎖定（眼睛發紅光＋畫面紅閃＋尖嘯）`spotSec` 秒（練習模式 ÷ intensity），接著朝玩家當下那一格俯衝（`diveSec`，翅膀上舉成 V、爪子前伸）；一被盯上停下也來不及，警告那 1 秒就要放手抓牢；落點時玩家在 `hitCols` 欄、`hitRows` 列內（含相鄰一欄的擦身）→ 撲落、回 1F（練習模式回平房地面重練）；已閃到更遠就撲空，老鷹拉起 `diveSec` 秒後才會再盯人。數值在 `levels.json` 的 `events.eagle`。
 
 ```ts
 // 每幀由 ClimbScene 呼叫，dt 只在攀爬中傳入
