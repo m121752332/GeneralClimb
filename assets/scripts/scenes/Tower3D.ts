@@ -12,6 +12,8 @@ import { MeshBuilder, type V3 } from './MeshKit';
 import { WindowCrowd } from './WindowCrowd';
 import type { CrowdTuning } from '../climb/CrowdPlan';
 import { pushInPose } from '../core/Cutscene';
+import { canopyClearance, faceU } from '../climb/EntranceShape';
+import { buildEntrances } from './Entrance';
 
 /**
  * 3D view of the climb (ADR-10): a low-poly Taipei 101 built in code, the current level's
@@ -240,6 +242,7 @@ export class Tower3D {
     private readonly crowdTuning: CrowdTuning;
 
     /** Practice mode: a small house of this many floors instead of the 101 (0 = the 101). */
+    /** 0 = the 101, which has a grand entrance on each face (Entrance.ts) the climber goes round. */
     private readonly houseFloors: number;
 
     constructor(rowsPerFloor: number, ladderRows: number, crowdTuning: CrowdTuning, houseFloors = 0) {
@@ -307,10 +310,9 @@ export class Tower3D {
         const faces = 4;
         const rpf = this.rowsPerFloor;
 
-        // Plaza and the crash mats round the base.
+        // Plaza, its stone paving and the grand entrance in the middle of each face.
         mb.quad([-400, 0, 400], [400, 0, 400], [400, 0, -400], [-400, 0, -400], COL.plaza, true);
-        const m = S[0].half0 + 3;
-        mb.quad([-m, 0.02, m], [m, 0.02, m], [m, 0.02, -m], [-m, 0.02, -m], COL.mat, true);
+        buildEntrances(mb, (y) => halfAt(S, y), faces);
 
         for (let i = 0; i < S.length; i++) {
             const sec = S[i];
@@ -667,7 +669,12 @@ export class Tower3D {
         }
         const wallY = this.baseY + row * ROW_H;
         const y = fallY ?? wallY + (this.standY - wallY) * stand;
-        const out = PLAYER_OUT + (this.standOut - PLAYER_OUT) * stand;
+        let out = PLAYER_OUT + (this.standOut - PLAYER_OUT) * stand;
+        // On the wall, hang out round the entrance canopy instead of climbing through it.
+        if (this.houseFloors === 0 && wall.faces > 1 && stand < 1) {
+            const u = faceU(s, wall.cols, this.half(y + 1.2));
+            out += (canopyClearance(u, y, HEAD, out) - out) * (1 - stand);
+        }
         return { s, y, out, stand };
     }
 

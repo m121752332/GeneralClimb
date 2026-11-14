@@ -68,6 +68,7 @@ GeneralClimb/
 窗內 NPC（M2）：`climb/CrowdPlan.ts`（純 TS：每關固定的窗位、種類、反應）＋`scenes/WindowCrowd.ts`（身體合成一個 mesh，只有手臂是節點）；只放在安全欄、整層無障礙的窗，尖塔不放。攀爬者靠近時揮手或拍照，有危險或墜落時擔心。共用網格工具在 `scenes/MeshKit.ts`。
 練習模式（GDD §7）：主頁「練習模式」→ `GameSession.mode = 'practice'` → 同一個 Climb 場景。`ClimbCore.practiceLevel()` 產生三層樓平房關（`levels.json` 的 `practice`：樓層數、牆寬、`demoEvents`、`demoAt`、`intensity`），`demoRows()` 把 `demoAt`（房子高度的比例）換成觸發列（各一次、依序），示範還沒跑完前屋頂那一步會被擋住；練習時不跑計時事件，事件長度取 `durationSec` 最小值，`intensity` 只放寬懲罰（強風推移間隔、強風風險、雨天容許時間、老鷹發現時間 ÷ 或 × intensity）。`Tower3D` 傳入樓層數就改畫平房（屋頂女兒牆、樓梯間、水塔，遠方天際線有 101）。墜落回地面再練、登頂顯示「練習完成」，不寫任何紀錄。網址加 `?practice=1` 可直接進練習。
 開場與過場（GDD §7、ADR-07）：時間與鏡頭數學在 `core/Cutscene.ts`（純 TS）。3 秒開場插畫 `ui/IntroOverlay.ts`（紅衣攀爬者背影＋天際線，慢慢放大後淡入主畫面）在 Home 上播放，每次開網頁只播一次（`GameSession.introPlayed`）；主畫面按開始遊戲或選關會設 `GameSession.pushIn`，Climb 先跑 2 秒鏡頭拉近塔底（`Tower3D.applyPushIn`，mode `intro`，不計時），墜落重來不再播。兩段都是點擊或按任意鍵略過（開頭 0.25 秒內不接受，避免同一下點擊直接跳過）。
+塔底大門：101 每面中央都有大門（玻璃門、通高石材門柱＋如意雲紋、弧形灰色金屬雨遮），塔底是石板廣場；尺寸與純函式在 `climb/EntranceShape.ts`，網格在 `scenes/Entrance.ts`。爬過雨遮高度時將軍會往外掛到雨遮前緣（`canopyClearance`），門與石柱後面的窗不放 NPC。平房（練習）不套用。
 關卡中的「退出」（回主畫面，按 X 也可）只在該關起點（第 0 列）、暫停、墜落或結算畫面出現。
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService
