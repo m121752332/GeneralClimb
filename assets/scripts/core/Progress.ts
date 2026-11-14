@@ -11,6 +11,7 @@
  *   while signed out are not lost and none are counted twice.
  */
 import type { StorageLike } from './Settings';
+import { t } from './I18n';
 
 export const PROGRESS_KEY = 'gcr.progress.v1';
 
@@ -108,8 +109,8 @@ export function unsyncedSummits(p: Progress): number {
 
 /** Home text, e.g. 「第 1 周目」 or 「第 3 周目 · 已登頂 2 次」. */
 export function formatRound(p: Progress): string {
-    const round = `第 ${p.rounds + 1} 周目`;
-    return p.summits > 0 ? `${round} · 已登頂 ${p.summits} 次` : round;
+    const round = t('round.n', { n: p.rounds + 1 });
+    return p.summits > 0 ? t('round.summits', { round, n: p.summits }) : round;
 }
 
 /** Load → change → save, for the scenes. */

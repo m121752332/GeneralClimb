@@ -5,6 +5,7 @@ import { type BootSnapshot, type BootStage, STAGE_MARK, describeWeather, runStag
 import { formatBest, readLocalBest } from '../core/LocalBest';
 import { applyScreenFit } from '../core/ScreenFit';
 import { AudioEngine } from '../core/Audio';
+import { lang, t } from '../core/I18n';
 import { settings } from '../core/Settings';
 import { STYLE, hex, loadBrandIcon, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
 import { buildBackdrop } from './HomeBackdrop';
@@ -47,40 +48,40 @@ export class Boot extends Component {
     private stages(): BootStage[] {
         return [
             {
-                title: '讀取遊戲設定',
+                title: t('boot.config'),
                 run: async () => {
                     const cfg = await LevelLoader.load();
                     this.config = cfg;
-                    return `levels.json v${cfg.version} OK · ${cfg.levels.length} 關`;
+                    return t('boot.configOk', { version: cfg.version, n: cfg.levels.length });
                 },
             },
             {
-                title: '載入帳號',
+                title: t('boot.account'),
                 run: async () => {
                     settings();
                     let storage: Storage | null = null;
                     try { storage = globalThis.localStorage ?? null; } catch { storage = null; }
-                    return `訪客模式 · ${formatBest(readLocalBest(storage)).replace('最佳紀錄：', '最佳 ')}`;
+                    return t('boot.guest', { best: formatBest(readLocalBest(storage)).replace('最佳紀錄：', '最佳 ') });
                 },
             },
             {
-                title: '天氣系統',
+                title: t('boot.weather'),
                 run: async () => describeWeather(this.config!),
             },
             {
-                title: 'NPC 載入',
-                run: async () => '窗內 NPC：路人、員工、觀光客',
+                title: t('boot.npc'),
+                run: async () => t('boot.npcOk'),
             },
             {
-                title: '音效',
+                title: t('boot.sound'),
                 run: async () => {
                     const s = settings().get();
-                    if (!AudioEngine.supported) return '此瀏覽器不支援音效';
-                    return `合成音效 · 音量 ${Math.round(s.volume * 100)}%${s.muted ? '（靜音）' : ''}`;
+                    if (!AudioEngine.supported) return t('boot.soundNo');
+                    return t(s.muted ? 'boot.soundOkMuted' : 'boot.soundOk', { pct: Math.round(s.volume * 100) });
                 },
             },
             {
-                title: '場景渲染',
+                title: t('boot.render'),
                 run: async (ctx) => {
                     // The logo is preloaded with the scene so Home draws it on its first frame.
                     // A missing logo is cosmetic: Home loads it again, so it does not fail Boot.
@@ -93,7 +94,7 @@ export class Boot extends Component {
                             if (total > 0) ctx.report(done / total);
                         }, (err) => (err ? reject(err) : resolve()));
                     });
-                    return (await icon) ? '主畫面與圖示就緒' : '主畫面就緒（圖示稍後載入）';
+                    return t((await icon) ? 'boot.renderOk' : 'boot.renderNoIcon');
                 },
             },
         ];
@@ -105,7 +106,7 @@ export class Boot extends Component {
         const result = await runStages(this.stages(), (s) => this.render(s), { minStageMs: MIN_STAGE_MS });
         const summary = this.rows.map((r) => `${r.mark.string} ${r.title.string} ${r.detail.string}`).join('\n');
         if (result.ok) {
-            this.currentLabel.string = '載入完成';
+            this.currentLabel.string = t('boot.done');
             // tools/smoke-site.mjs reads this, since the labels are gone once Home loads.
             (globalThis as { __GC_BOOT?: string }).__GC_BOOT = summary;
             this.scheduleOnce(() => director.loadScene(HOME_SCENE), DONE_HOLD_SEC);
@@ -114,9 +115,9 @@ export class Boot extends Component {
         console.error(result.error);
         const title = this.rows[result.failedIndex ?? 0].title.string;
         this.currentLabel.color = STATE_COLOR.failed;
-        this.currentLabel.string = `${title} 載入失敗`;
-        (globalThis as { __GC_BOOT?: string }).__GC_BOOT = `${title} 載入失敗\n${summary}`;
-        this.retry = makeButton(this.node, '重試', 240, 84, STYLE.primary, () => {
+        this.currentLabel.string = t('boot.failed', { title });
+        (globalThis as { __GC_BOOT?: string }).__GC_BOOT = `${t('boot.failed', { title })}\n${summary}`;
+        this.retry = makeButton(this.node, t('boot.retry'), 240, 84, STYLE.primary, () => {
             this.currentLabel.color = Color.WHITE;
             void this.run();
         }, 0, -470).node;
@@ -127,12 +128,12 @@ export class Boot extends Component {
         const panel = makeNode('LoadingPanel', this.node, 640, panelH, 0, -20);
         roundRect(panel.addComponent(Graphics), 640, panelH, 28, hex('#0b1024', 225), hex('#8fa6ff', 180), 2);
 
-        makeLabel(this.node, '霍將軍爬101大樓', 60, Color.WHITE, {
+        makeLabel(this.node, t('game.title'), lang() === 'en' ? 48 : 60, Color.WHITE, {
             y: panelH / 2 + 90, bold: true, outline: hex('#2a0d3a'), outlineWidth: 5, shadow: hex('#ff5a3c', 200),
         });
 
         const top = panelH / 2;
-        this.currentLabel = makeLabel(panel, '準備中…', 30, Color.WHITE, { y: top - 50, bold: true });
+        this.currentLabel = makeLabel(panel, t('boot.preparing'), 30, Color.WHITE, { y: top - 50, bold: true });
         const barNode = makeNode('Bar', panel, BAR_W, BAR_H, 0, top - 105);
         this.bar = barNode.addComponent(Graphics);
         this.percent = makeLabel(panel, '0%', 26, hex('#ffc94a'), { y: top - 150, bold: true });
@@ -171,11 +172,13 @@ export class Boot extends Component {
             const row = this.rows[i];
             row.mark.string = STAGE_MARK[st.state];
             row.mark.color = STATE_COLOR[st.state];
-            const detail = st.state === 'loading' ? '載入中…' : st.detail;
-            row.detail.string = detail.length > 26 ? `${detail.slice(0, 25)}…` : detail;
+            const detail = st.state === 'loading' ? t('common.loading') : st.detail;
+            // English letters are about half as wide as CJK characters.
+            const max = lang() === 'en' ? 44 : 26;
+            row.detail.string = detail.length > max ? `${detail.slice(0, max - 1)}…` : detail;
             row.detail.color = st.state === 'failed' ? STATE_COLOR.failed : hex('#9aa6d8');
         });
         const cur = s.stages[s.current];
-        if (cur) this.currentLabel.string = cur.state === 'failed' ? `${cur.title} 載入失敗` : `${cur.title}…`;
+        if (cur) this.currentLabel.string = cur.state === 'failed' ? t('boot.failed', { title: cur.title }) : `${cur.title}…`;
     }
 }

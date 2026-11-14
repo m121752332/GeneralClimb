@@ -8,12 +8,13 @@ import { effectiveSpeed, nextSpeed, speedText } from '../core/ClimbSpeed';
 import { GameSession } from '../core/GameSession';
 import { SPIRE_TIP_FLOOR, recordLocalBest } from '../core/LocalBest';
 import { afterFall, afterLevelCleared, afterSummit, updateProgress } from '../core/Progress';
+import { levelName, t } from '../core/I18n';
 import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
 import { applyScreenFit } from '../core/ScreenFit';
 import { PUSH_IN_SEC, SKIP_GRACE_SEC } from '../core/Cutscene';
 import {
-    ClimbSim, Dir, FALL_TEXT, NO_DIR, dirFromKeys, dirFromStick, formatClimbTime, randomSeed,
+    ClimbSim, Dir, NO_DIR, fallText, dirFromKeys, dirFromStick, formatClimbTime, randomSeed,
 } from '../climb/ClimbCore';
 import { ROW_H } from '../climb/TowerShape';
 import { ENDING_SEC, Tower3D } from './Tower3D';
@@ -33,7 +34,6 @@ const FALL_G = 30;
 const DRAG_SLOP = 8;
 /** Mouse events this soon after a touch are the browser's emulation of it; ignore them. */
 const TOUCH_MOUSE_GAP_MS = 800;
-const PLAYER_NAME = '霍將軍';
 /** ADR-02: level-to-level scroll lasts about 1.5 s. */
 const TRANSITION_SEC = 1.5;
 /** Overlay text sits above the climber so it never covers them. */
@@ -81,21 +81,14 @@ type Mode = 'loading' | 'intro' | 'ready' | 'play' | 'paused' | 'transition' | '
 
 /** "1–8F", or 尖塔 on the ladder levels. */
 function floorsText(l: { floors: string; floorFrom: number | null; floorTo: number | null }): string {
-    return l.floorFrom === null ? '尖塔' : `${l.floorFrom}–${l.floorTo}F`;
+    return l.floorFrom === null ? t('floors.spire') : `${l.floorFrom}–${l.floorTo}F`;
 }
 
 /** Mini map (top right): height in pixels and the panel's half width. */
 const MINIMAP_H = 300;
 const MINIMAP_HALF_W = 34;
 
-const EVENT_LABEL = { wind: '風', rain: '雨', eagle: '鷹' } as const;
-
-/** Practice mode (GDD §7): what to do when each event comes, shown while it warns and runs. */
-const PRACTICE_TIP = {
-    wind: '強風來了！放開方向鍵抓牢\n亂動會被吹向轉角（危險區）',
-    rain: '下雨了！手會滑\n完全停下，等雨停再爬',
-    eagle: '老鷹來了！完全不要動\n一動就會被牠紅眼盯上撲下來',
-} as const;
+/** Event icon letters and the practice-mode tips (GDD 7) are core/I18n `event.*` and `tip.*`. */
 /** Practice tip sits under the HUD band. */
 const TIP_TOP = 250;
 
@@ -186,7 +179,7 @@ export class Climb extends Component {
         (globalThis as { __GC_SCENE?: string }).__GC_SCENE = 'Climb';
         applyScreenFit();
         this.buildNodes();
-        this.showOverlay('載入中…');
+        this.showOverlay(t('common.loading'));
         input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
         input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
         input.on(Input.EventType.TOUCH_START, this.onTouchStart, this);
@@ -212,7 +205,7 @@ export class Climb extends Component {
         }).catch((err: unknown) => {
             console.error(err);
             this.mode = 'error';
-            this.showOverlay(`載入失敗\n${err instanceof Error ? err.message : String(err)}`);
+            this.showOverlay(t('climb.loadFailed', { error: err instanceof Error ? err.message : String(err) }));
         });
     }
 
@@ -286,11 +279,11 @@ export class Climb extends Component {
         this.mode = 'ready';
         const l = this.sim.level;
         if (this.practice) {
-            this.showOverlay(`練習模式 · ${l.name}\n風、雨、老鷹各來一次（較溫和）\n不計紀錄\n\n方向鍵 / WASD 或拖曳下半部攀爬\n放開 = 抓牢\n拖曳上半部 / Q E 旋轉視角\n爬上屋頂就完成`);
+            this.showOverlay(t('climb.practiceIntro', { name: levelName(l.name), controls: t('climb.controls') }));
             return;
         }
-        const hint = l.floorFrom === null ? '爬梯只能上下，強風時抓牢' : '可繞到其他面，轉角是危險區';
-        this.showOverlay(`第 ${l.id} 關 ${l.name}\n${floorsText(l)}\n\n方向鍵 / WASD 或拖曳下半部攀爬\n放開 = 抓牢\n拖曳上半部 / Q E 旋轉視角\n${hint}`);
+        const hint = t(l.floorFrom === null ? 'climb.hintLadder' : 'climb.hintWall');
+        this.showOverlay(t('climb.levelIntro', { id: l.id, name: levelName(l.name), floors: floorsText(l), controls: t('climb.controls'), hint }));
         if (GameSession.pushIn) {
             // GDD §7: coming from Home's start button, the camera pushes in to the base first.
             // Only once: a retry after a fall starts straight away.
@@ -386,7 +379,7 @@ export class Climb extends Component {
             const sim = this.sim as ClimbSim;
             this.mode = 'fallen';
             if (sim.practice) {
-                this.showOverlay(`${FALL_TEXT[sim.fallCause ?? 'edge']}\n\n練習不計紀錄\n\n點擊或按空白鍵 再練一次`);
+                this.showOverlay(t('climb.practiceFall', { cause: fallText(sim.fallCause ?? 'edge') }));
                 return;
             }
             if (this.recording) {
@@ -396,7 +389,9 @@ export class Climb extends Component {
                 this.startIndex = 0;
             }
             const from = this.cfg!.levels[this.startIndex].floorFrom;
-            this.showOverlay(`${FALL_TEXT[sim.fallCause ?? 'edge']}\n\n最高 ${sim.runMaxFloor ?? '-'}F · ${formatClimbTime(sim.climbSec)}\n種子 ${sim.seed}\n\n點擊或按空白鍵 從 ${from}F 再爬一次`);
+            this.showOverlay(t('climb.fall', {
+                cause: fallText(sim.fallCause ?? 'edge'), floor: sim.runMaxFloor ?? '-', time: formatClimbTime(sim.climbSec), seed: sim.seed, from: String(from),
+            }));
         }
     }
 
@@ -407,7 +402,7 @@ export class Climb extends Component {
             sound().music(null);
             sound().play('levelUp');
             this.mode = 'cleared';
-            this.showOverlay(`練習完成！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}（不計紀錄）\n\n點擊或按空白鍵 再練一次\n右上「退出」回主畫面 開始挑戰 101`);
+            this.showOverlay(t('climb.practiceDone', { time: formatClimbTime(sim.climbSec) }));
             return;
         }
         // Clearing level N opens level N+1 in the level select, kept across reloads.
@@ -420,7 +415,7 @@ export class Climb extends Component {
             this.mode = 'transition';
             this.transSec = 0;
             const l = next.level;
-            this.showOverlay(`第 ${sim.level.id} 關完成\n\n第 ${l.id} 關 ${l.name}\n${floorsText(l)}`);
+            this.showOverlay(t('climb.levelDone', { done: sim.level.id, id: l.id, name: levelName(l.name), floors: floorsText(l) }));
             return;
         }
         // Summit: about 10 s sitting on the top looking down over the city, then the result.
@@ -434,7 +429,7 @@ export class Climb extends Component {
     private tickEnding(dt: number): void {
         this.endSec += dt;
         if (this.endSec > 5 && this.endSec < ENDING_SEC && !this.overlayLabel.node.active) {
-            this.overlayLabel.string = '抵達塔尖！';
+            this.overlayLabel.string = t('climb.summitShort');
             this.overlayLabel.node.active = true;
         }
         if (this.endSec >= ENDING_SEC) this.finishEnding();
@@ -451,9 +446,9 @@ export class Climb extends Component {
             recordLocalBest(this.storage(), { maxFloor: SPIRE_TIP_FLOOR, bestClearMs: Math.round(sim.climbSec * 1000) });
             const p = updateProgress(this.storage(), (q) => afterSummit(q, new Date()));
             this.startIndex = 0;
-            round = `\n完成第 ${p.rounds} 周目 · 累計登頂 ${p.summits} 次\n關卡重新上鎖，接下來是第 ${p.rounds + 1} 周目`;
+            round = `\n${t('climb.summitRound', { rounds: p.rounds, summits: p.summits, next: p.rounds + 1 })}`;
         }
-        this.showOverlay(`抵達塔尖！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}\n種子 ${sim.seed}${round}\n\n點擊或按空白鍵 再玩一次`);
+        this.showOverlay(t('climb.summit', { time: formatClimbTime(sim.climbSec), seed: sim.seed, round }));
     }
 
     /**
@@ -487,7 +482,7 @@ export class Climb extends Component {
         if (this.mode === 'play') {
             this.mode = 'paused';
             sound().music(null);
-            this.showOverlay('暫停中\n\nEsc 或點擊繼續\n右上「退出」回主畫面');
+            this.showOverlay(t('climb.paused'));
         } else if (this.mode === 'paused') {
             sound().music('climb');
             this.mode = 'play';
@@ -719,7 +714,7 @@ export class Climb extends Component {
 
     private buildNodes(): void {
         const tag = this.makeLabel('Name', this.node, 20);
-        tag.string = PLAYER_NAME;
+        tag.string = t('player.name');
         tag.enableOutline = true;
         tag.outlineColor = new Color(0, 0, 0, 200);
         tag.outlineWidth = 2;
@@ -733,15 +728,15 @@ export class Climb extends Component {
         this.timeLabel = this.makeLabel('Time', hud, 30, Label.HorizontalAlign.RIGHT);
         this.eventLabel = this.makeLabel('Event', hud, 40);
         this.riskLabel = this.makeLabel('Risk', hud, 20);
-        this.riskLabel.string = '風險';
+        this.riskLabel.string = t('climb.risk');
         const gm = this.makeLabel('GmBadge', hud, 24);
-        gm.string = 'GM 開發人員模式';
+        gm.string = t('climb.gm');
         gm.color = hex('#ffd34a');
         gm.node.active = GameSession.devMode === true;
         this.gmLabel = gm;
         this.overlayLabel = this.makeLabel('Overlay', hud, 36);
         this.exitLabel = this.makeLabel('Exit', hud, 28);
-        this.exitLabel.string = '退出';
+        this.exitLabel.string = t('climb.exit');
         this.speedLabel = this.makeLabel('Speed', hud, 28);
         this.speedLabel.color = hex('#ffd34a');
         const tip = this.makeLabel('PracticeTip', hud, 30);
@@ -752,7 +747,7 @@ export class Climb extends Component {
         tip.node.active = false;
         this.tipLabel = tip;
         const skip = this.makeLabel('Skip', this.node, 26);
-        skip.string = '點擊或按任意鍵略過 ▶▶';
+        skip.string = t('common.skip');
         skip.enableOutline = true;
         skip.outlineColor = new Color(0, 0, 0, 200);
         skip.outlineWidth = 2;
@@ -922,10 +917,12 @@ export class Climb extends Component {
         h.fill();
 
         const floor = fallen ? sim.floorAt(tower.rowAtFeet(this.fallY)) : sim.floor;
-        this.floorLabel.string = floor === null ? sim.level.name : `${floor}F`;
+        this.floorLabel.string = floor === null ? levelName(sim.level.name) : `${floor}F`;
         this.floorLabel.node.setPosition(0, top - 52);
         const shown = sim.level;
-        this.levelLabel.string = sim.practice ? `練習模式 ${shown.name}` : `第 ${shown.id} 關 ${shown.name} ${floorsText(shown)}`;
+        this.levelLabel.string = sim.practice
+            ? t('climb.hudPractice', { name: levelName(shown.name) })
+            : t('climb.hudLevel', { id: shown.id, name: levelName(shown.name), floors: floorsText(shown) });
         this.levelLabel.node.setPosition(0, top - 106);
         this.timeLabel.string = formatClimbTime(sim.climbSec);
         this.timeLabel.node.setPosition(right - 24, top - 130);
@@ -993,7 +990,7 @@ export class Climb extends Component {
         const waitRoof = sim.practice && this.mode === 'play' && tipKind === null && sim.roofLocked && sim.row >= sim.wall.rows - 1;
         this.tipLabel.node.active = (tipKind !== null || waitRoof) && !this.overlayLabel.node.active;
         if (tipKind || waitRoof) {
-            this.tipLabel.string = tipKind ? PRACTICE_TIP[tipKind] : '天氣還沒示範完\n抓牢等一下再上屋頂';
+            this.tipLabel.string = t(tipKind ? `tip.${tipKind}` : 'climb.practiceWait');
             this.tipLabel.node.setPosition(0, top - TIP_TOP);
         }
 
@@ -1014,7 +1011,7 @@ export class Climb extends Component {
                 h.close();
             }
             h.fill();
-            this.eventLabel.string = EVENT_LABEL[kind];
+            this.eventLabel.string = t(`event.${kind}`);
             this.eventLabel.node.setPosition(ix, iy - 2);
             if (s.state === 'active') {
                 h.fillColor = color;
