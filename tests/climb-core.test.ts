@@ -78,18 +78,18 @@ test('narrow walls still keep a safe route', () => {
     }
 });
 
-test('scheduler: level 1 has no wind; eagle at 300 s, rain at 600 s, one event at a time', () => {
+test('scheduler: level 1 has no wind; eagle at 90 s then every 120 s, rain at 600 s, one event at a time', () => {
     const c = cfg();
     const s = new EventScheduler(c.events, 0, createRng(1));
     const seen: string[] = [];
     let concurrent = 0;
-    for (let t = 0; t < 1300; t += 0.05) {
+    for (let t = 0; t < 800; t += 0.05) {
         const before = s.state;
         s.update(0.05);
         if (before !== 'warning' && s.state === 'warning') seen.push(`${s.kind}@${Math.round(s.clock)}`);
         if (s.state !== 'idle' && s.kind === null) concurrent++;
     }
-    assert.deepEqual(seen, ['eagle@300', 'rain@600', 'eagle@900', 'rain@1200']);
+    assert.deepEqual(seen, ['eagle@90', 'eagle@210', 'eagle@330', 'eagle@450', 'eagle@570', 'rain@600', 'eagle@690']);
     assert.equal(concurrent, 0);
 });
 
@@ -97,7 +97,7 @@ test('scheduler: warning -> active -> cooldown -> idle with configured lengths',
     const c = cfg();
     const s = new EventScheduler(c.events, 0, createRng(1));
     const step = (sec: number) => { for (let t = 0; t < sec - 1e-9; t += 0.01) s.update(0.01); };
-    step(300.005);
+    step(c.events.eagle.firstSec + 0.005);
     assert.equal(s.state, 'warning');
     assert.equal(s.activeKind, null);
     step(c.events.warningSec);
@@ -226,7 +226,7 @@ test('rain: moving longer than rainGraceSec falls; gripping is safe', () => {
 test('eagle: holding still is safe; any move locks it on (red eyes), then it dives and knocks the climber off', () => {
     const c = cfg();
     const sim = new ClimbSim(c, 0, 7);
-    run(sim, 300 + c.events.warningSec + 0.05);
+    run(sim, c.events.eagle.firstSec + c.events.warningSec + 0.05);
     assert.equal(sim.scheduler.activeKind, 'eagle');
     run(sim, 1);
     assert.equal(sim.eagleGlareSec, 0, 'still: not seen');
