@@ -64,6 +64,14 @@ export interface TowerConfig {
 }
 
 /** Developer-mode (RUNGM) aids. Normal players always climb at x1. */
+/** Cloud summit count and leaderboard (ADR-09). `minSummitSec` must match config/firestore.rules. */
+export interface CloudConfig {
+    /** Shortest real summit run; the cloud count may grow by at most one per this many seconds. */
+    minSummitSec: number;
+    /** Rows shown on the leaderboard. */
+    leaderboardSize: number;
+}
+
 export interface DevConfig {
     /** Climb speed multipliers the developer can cycle through; the first is 1. */
     climbSpeeds: number[];
@@ -125,6 +133,7 @@ export interface LevelConfig {
     pagodaFlare: PagodaFlareConfig;
     tower: TowerConfig;
     dev: DevConfig;
+    cloud: CloudConfig;
     crowd: CrowdConfig;
     levels: LevelDef[];
     practice: PracticeConfig;
@@ -372,6 +381,12 @@ function checkDev(c: Checker, root: Obj): void {
     }
 }
 
+function checkCloud(c: Checker, root: Obj): void {
+    const k = c.obj(root, 'cloud', '$');
+    c.num(k, 'minSummitSec', '$.cloud', { min: 1, int: true });
+    c.num(k, 'leaderboardSize', '$.cloud', { min: 1, max: 100, int: true });
+}
+
 function checkCrowd(c: Checker, root: Obj): void {
     const w = c.obj(root, 'crowd', '$');
     c.num(w, 'secondChance', '$.crowd', { min: 0, max: 1 });
@@ -430,6 +445,7 @@ export function parseLevelConfig(input: unknown): LevelConfig {
     checkPagodaFlare(c, root);
     checkTower(c, root);
     checkDev(c, root);
+    checkCloud(c, root);
     checkCrowd(c, root);
     checkPractice(c, root, widths);
 

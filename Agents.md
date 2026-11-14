@@ -71,6 +71,7 @@ GeneralClimb/
 塔底大門：101 每面中央都有大門（玻璃門、通高石材門柱＋如意雲紋、弧形灰色金屬雨遮），塔底是石板廣場；尺寸與純函式在 `climb/EntranceShape.ts`，網格在 `scenes/Entrance.ts`。爬過雨遮高度時將軍會往外掛到雨遮前緣（`canopyClearance`），門與石柱後面的窗不放 NPC。平房（練習）不套用。
 關卡進度（ADR-06 修訂）：`core/Progress.ts`（純 TS，localStorage `gcr.progress.v1`）記錄已解鎖到第幾關、周目數、登頂次數；破一關開一關（退出後可從選關接著玩），墜落回 1F 時解鎖重置，看完登頂動畫重置解鎖並累加周目。主頁顯示「第 N 周目 · 已登頂 X 次」，選關依 `LevelAccess` 的 `unlocked` 開鎖。墜落與登頂時寫入本機最佳紀錄（`LocalBest.recordLocalBest`）。練習與開發人員模式都不記錄。
 語言與全螢幕：主畫面右上（音量鈕左邊）的膠囊「🌐 中文 / EN ｜ 全螢幕」。所有玩家看得到的文字都在 `core/I18n.ts`（純 TS，`t('key', { var })`；`zh-TW` 預設、`en`），兩種語言的 key 與 `{佔位}` 必須一致（`tests/i18n.test.ts` 檢查）；levels.json 的關卡名稱維持中文，英文名在 `I18n` 的 `translateLevelName`。選擇存在 `Settings.lang`，切換時重新載入 Home 場景。全螢幕在 `core/Fullscreen.ts`（含 WebKit 前綴）；iPhone Safari 沒有全螢幕 API，按下時提示「分享 → 加入主畫面」，已從主畫面開啟（standalone）時提示已是全螢幕。
+Google 登入與登頂排行榜（ADR-09 修訂）：`core/FirebaseConfig.ts`（網頁設定，`null` = 只能訪客）、`core/AuthService.ts`（`auth()` 單例：Boot 載入 SDK、`signInWithPopup`、`syncSummits` 上傳未同步的登頂、`leaderboard`、`deleteAccount`）、`core/CloudSummit.ts`（純 TS：與 `config/firestore.rules` 相同的上傳限制、排名、名稱）。UI 在 `ui/AccountPanel.ts`、`ui/LeaderboardPanel.ts`。`levels.json` 的 `cloud.minSummitSec` 必須等於規則裡的秒數（測試會檢查）。Firebase 專案設定步驟：`docs/firebase-setup.md`。
 關卡中的「退出」（回主畫面，按 X 也可）只在該關起點（第 0 列）、暫停、墜落或結算畫面出現。
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService

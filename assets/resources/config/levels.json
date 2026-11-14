@@ -96,6 +96,7 @@
   "dev": {
     "climbSpeeds": [1, 1.5, 2, 3, 5]
   },
+  "cloud": { "minSummitSec": 300, "leaderboardSize": 20 },
   "crowd": { "secondChance": 0.5, "minGap": 2, "reactFloors": 2, "waveCols": 3, "shrinkFromLevel": 9, "refCols": 7 },
   "levels": [
     {

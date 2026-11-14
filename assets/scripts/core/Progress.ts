@@ -107,6 +107,12 @@ export function unsyncedSummits(p: Progress): number {
     return Math.max(0, p.summits - p.syncedSummits);
 }
 
+/** After `added` summits were written to the cloud total. */
+export function markSynced(p: Progress, added: number): Progress {
+    if (added <= 0) return p;
+    return { ...p, syncedSummits: Math.min(p.summits, p.syncedSummits + added) };
+}
+
 /** Home text, e.g. 「第 1 周目」 or 「第 3 周目 · 已登頂 2 次」. */
 export function formatRound(p: Progress): string {
     const round = t('round.n', { n: p.rounds + 1 });
