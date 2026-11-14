@@ -78,6 +78,20 @@ test('narrow walls still keep a safe route', () => {
     }
 });
 
+test('from level 9 the narrower walls get proportionally fewer vents than level 8', () => {
+    const c = cfg();
+    const perBlock = (w: keyof typeof c.widths, i: number): number => {
+        const wall = buildWall(c.widths[w], c.levels[i], createRng(5), undefined, 4);
+        return wall.obstacles.size / Math.ceil(wall.rows / 12);
+    };
+    const density = (w: keyof typeof c.widths, i: number): number => perBlock(w, i) / (c.widths[w].cols * 4);
+    assert.equal(perBlock('narrow', 8), 6, 'level 9: 1.5 per face per 12 rows');
+    assert.equal(perBlock('xnarrow', 11), 4, 'level 12: 1 per face per 12 rows');
+    for (const [w, i] of [['narrow', 8], ['narrow', 10], ['xnarrow', 11]] as const) {
+        assert.ok(density(w, i) <= density('mediumNarrow', 7) + 0.02, `level ${i + 1} no denser than level 8`);
+    }
+});
+
 test('scheduler: level 1 has no wind; eagle at 90 s then every 120 s, rain at 600 s, one event at a time', () => {
     const c = cfg();
     const s = new EventScheduler(c.events, 0, createRng(1));

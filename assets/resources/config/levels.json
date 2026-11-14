@@ -96,7 +96,7 @@
   "dev": {
     "climbSpeeds": [1, 1.5, 2, 3, 5]
   },
-  "crowd": { "secondChance": 0.5, "minGap": 2, "reactFloors": 2, "waveCols": 3 },
+  "crowd": { "secondChance": 0.5, "minGap": 2, "reactFloors": 2, "waveCols": 3, "shrinkFromLevel": 9, "refCols": 7 },
   "levels": [
     {
       "id": 1,
@@ -176,7 +176,7 @@
       "floors": "67-74F",
       "width": "narrow",
       "windChance": 0.55,
-      "obstaclesPer12Rows": 3,
+      "obstaclesPer12Rows": 1.5,
       "startPlatform": true
     },
     {
@@ -185,7 +185,7 @@
       "floors": "75-82F",
       "width": "narrow",
       "windChance": 0.6,
-      "obstaclesPer12Rows": 3,
+      "obstaclesPer12Rows": 1.5,
       "startPlatform": true
     },
     {
@@ -194,7 +194,7 @@
       "floors": "83-90F",
       "width": "narrow",
       "windChance": 0.65,
-      "obstaclesPer12Rows": 3,
+      "obstaclesPer12Rows": 1.5,
       "startPlatform": true
     },
     {
@@ -203,7 +203,7 @@
       "floors": "91-101F",
       "width": "xnarrow",
       "windChance": 0.7,
-      "obstaclesPer12Rows": 3,
+      "obstaclesPer12Rows": 1,
       "startPlatform": true
     },
     {

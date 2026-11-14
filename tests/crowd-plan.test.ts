@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { hashRng, npcMood, planCrowd, ringDistance, type NpcSpot } from '../assets/scripts/climb/CrowdPlan.ts';
+import { crowdShare, hashRng, npcMood, planCrowd, ringDistance, type NpcSpot } from '../assets/scripts/climb/CrowdPlan.ts';
 
 const T = { secondChance: 0.5, minGap: 2, reactFloors: 2, waveCols: 3 };
 const wide = { cols: 11, faces: 4, ring: 44, rows: 8 * 12 };
@@ -59,4 +59,20 @@ test('moods follow the climber', () => {
     assert.equal(npcMood(staff, { ...near, alarmed: true }, 44, 4, T), 'worried');
     assert.equal(npcMood(staff, { ...near, floor: 7 }, 44, 4, T), 'idle');
     assert.equal(npcMood(staff, { ...near, col: 30 }, 44, 4, T), 'idle');
+});
+
+test('from shrinkFromLevel up, narrower walls put people on proportionally fewer floors', () => {
+    const S = { ...T, secondChance: 0, shrinkFromLevel: 9, refCols: 7 };
+    const narrow = { cols: 5, faces: 4, ring: 20, rows: 8 * 12 };
+    const top = { cols: 4, faces: 4, ring: 16, rows: 11 * 12 };
+    const all = () => true;
+    assert.equal(crowdShare(5, 8, S), 1);
+    assert.equal(crowdShare(7, 9, S), 1);
+    assert.equal(planCrowd(narrow, 12, 8, S, all).length, 8);
+    const l9 = planCrowd(narrow, 12, 9, S, all);
+    assert.equal(l9.length, Math.round(8 * 5 / 7));
+    const l12 = planCrowd(top, 12, 12, S, all);
+    assert.equal(l12.length, Math.round(11 * 4 / 7));
+    // Wider levels are unchanged by the setting.
+    assert.deepEqual(planCrowd(wide, 12, 3, { ...T, shrinkFromLevel: 9, refCols: 7 }, safeOnly), planCrowd(wide, 12, 3, T, safeOnly));
 });
