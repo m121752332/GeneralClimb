@@ -1,7 +1,7 @@
 import { Camera, Color, Material, Mesh, MeshRenderer, Node, Vec3 } from 'cc';
 import { MeshBuilder } from './MeshKit';
 import {
-    CLOUD_LAYERS, HAZE, type RGB, clamp01, cloudPlan, cloudSpin, hazeAt, mix, rgb, skyColorAt, skyStops,
+    CLOUD_LAYERS, type Cloud, HAZE, type RGB, type SkyStop, clamp01, cloudPlan, cloudSpin, hazeAt, mix, rgb, skyColorAt, skyStops,
 } from '../climb/BasinShape';
 
 /**
@@ -30,10 +30,20 @@ const CLOUD_BOTTOM = rgb('#b8c6d3');
 /** Raining: clouds turn this grey (multiplied in through the material colour). */
 const CLOUD_STORM = new Color(150, 156, 164, 255);
 
+/** Optional restyling (the Home screen's dusk); the climb uses the defaults. */
+export interface SkyLook {
+    /** Sky stops for an altitude (0..1) and gloom (0..1); defaults to the climb's day sky. */
+    sky?: (altitude: number, gloom: number) => SkyStop[];
+    /** Multiplied into the clouds' colours in clear weather (default white). */
+    cloudTint?: Color;
+    /** Clouds to keep (default all). */
+    cloudFilter?: (c: Cloud) => boolean;
+}
+
 export class Atmosphere3D {
     private readonly dome: Node;
     private domeMesh: Mesh;
-    private readonly layers: { node: Node; spin: number; renderer: MeshRenderer }[] = [];
+    private readonly layers: { node: Node; spin: number; renderer: MeshRenderer; layer: number }[] = [];
     private readonly addMesh: AddMesh;
     private readonly camera: Camera;
     private readonly topY: number;
@@ -42,9 +52,11 @@ export class Atmosphere3D {
     private key = '';
     private cloudTint = -1;
     private readonly tmp = new Vec3();
+    private readonly look: SkyLook;
 
     /** `topY` is the summit height: the sky is at its deepest there. */
-    constructor(parent: Node, camera: Camera, topY: number, addMesh: AddMesh) {
+    constructor(parent: Node, camera: Camera, topY: number, addMesh: AddMesh, look: SkyLook = {}) {
+        this.look = look;
         this.addMesh = addMesh;
         this.camera = camera;
         this.topY = topY;
@@ -52,20 +64,21 @@ export class Atmosphere3D {
         this.dome = sky.node;
         this.domeMesh = sky.mesh;
         this.key = this.keyOf(0, 0);
-        const clouds = cloudPlan();
+        const clouds = cloudPlan().filter(look.cloudFilter ?? (() => true));
         CLOUD_LAYERS.forEach((_, layer) => {
             const positions: number[] = [], colors: number[] = [], indices: number[] = [];
             for (const c of clouds) {
                 if (c.layer !== layer) continue;
                 addCloud(c.angle, c.dist, c.y, c.puffs, positions, colors, indices);
             }
+            if (!indices.length) return;
             const built = MeshBuilder.from(positions, colors, indices);
             const holder = new Node(`Clouds${layer}`);
             holder.layer = parent.layer;
             parent.addChild(holder);
             const { node } = addMesh(`CloudMesh${layer}`, built, holder);
             const renderer = node.getComponent(MeshRenderer)!;
-            this.layers.push({ node: holder, spin: 0, renderer });
+            this.layers.push({ node: holder, spin: 0, renderer, layer });
         });
         this.setCloudTint(0);
     }
@@ -79,8 +92,8 @@ export class Atmosphere3D {
         this.dome.setPosition(p);
         this.gloom += (clamp01(gloom) - this.gloom) * (1 - Math.exp(-dt * GLOOM_RATE));
         this.wind += (clamp01(wind) - this.wind) * (1 - Math.exp(-dt * WIND_RATE));
-        this.layers.forEach((l, i) => {
-            l.spin += cloudSpin(i, this.wind) * dt;
+        this.layers.forEach((l) => {
+            l.spin += cloudSpin(l.layer, this.wind) * dt;
             l.node.setRotationFromEuler(0, (l.spin * 180) / Math.PI, 0);
         });
         const altitude = clamp01(p.y / this.topY);
@@ -110,13 +123,13 @@ export class Atmosphere3D {
     private setCloudTint(g: number): void {
         if (g === this.cloudTint) return;
         this.cloudTint = g;
-        const c = Color.lerp(new Color(), Color.WHITE, CLOUD_STORM, g);
+        const c = Color.lerp(new Color(), this.look.cloudTint ?? Color.WHITE, CLOUD_STORM, g);
         for (const l of this.layers) l.renderer.getMaterialInstance(0)?.setProperty('mainColor', c);
     }
 
     /** Sky sphere coloured by elevation. Built under `holder` (created on first build). */
     private buildDome(altitude: number, gloom: number, holder?: Node): { node: Node; mesh: Mesh } {
-        const stops = skyStops(altitude, gloom);
+        const stops = (this.look.sky ?? skyStops)(altitude, gloom);
         const positions: number[] = [], colors: number[] = [], indices: number[] = [];
         const rings = DOME_RINGS.length;
         for (let i = 0; i <= DOME_SEGMENTS; i++) {

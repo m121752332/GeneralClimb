@@ -240,7 +240,8 @@ function drawSkyline(parent: Node, name: string, seed: number, color: Color, min
     }
 }
 
-export function buildBackdrop(parent: Node): void {
+/** Flat 2D backdrop; HomeBackdrop3D shows it until the 3D view is ready. Returns its root. */
+export function buildBackdrop(parent: Node): Node {
     const root = makeNode('Backdrop', parent);
     drawSky(root);
     drawStars(root);
@@ -249,4 +250,5 @@ export function buildBackdrop(parent: Node): void {
     drawSkyline(root, 'FarCity', 3, hex('#2b2452'), 40, 260, 90, 130);
     drawTower(root);
     drawSkyline(root, 'NearCity', 11, hex('#120f26'), -40, 110, 170, 170);
+    return root;
 }

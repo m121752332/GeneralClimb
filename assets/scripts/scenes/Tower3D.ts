@@ -16,7 +16,8 @@ import { canopyClearance, faceU } from '../climb/EntranceShape';
 import { buildEntrances } from './Entrance';
 import { Eagle3D } from './Eagle3D';
 import { buildCity, buildTerrain, buildWater } from './Basin3D';
-import { Atmosphere3D, DOME_RADIUS } from './Atmosphere3D';
+import { Atmosphere3D, DOME_RADIUS, type SkyLook } from './Atmosphere3D';
+import { type BasinLook, rng } from '../climb/BasinShape';
 
 /**
  * 3D view of the climb (ADR-10): a low-poly Taipei 101 built in code, the current level's
@@ -113,6 +114,18 @@ const COL = {
     tank: hex('#c7ccd0'),
     lawn: hex('#7f9a62'),
 };
+
+type ColKey = keyof typeof COL;
+
+/** Optional restyling of the 101 and its surroundings (the Home screen's dusk view). */
+export interface TowerLook {
+    /** Replacement '#rrggbb' colours for the tower's static scenery. */
+    colors?: Partial<Record<ColKey, string>>;
+    basin?: BasinLook;
+    /** Highest a city block may be at (x, z). */
+    cityCap?: (x: number, z: number) => number;
+    sky?: SkyLook;
+}
 
 function hex(s: string): Color {
     return new Color().fromHEX(s);
@@ -251,7 +264,13 @@ export class Tower3D {
     /** 0 = the 101, which has a grand entrance on each face (Entrance.ts) the climber goes round. */
     private readonly houseFloors: number;
 
-    constructor(rowsPerFloor: number, ladderRows: number, crowdTuning: CrowdTuning, houseFloors = 0) {
+    private readonly look: TowerLook;
+    private readonly col: Record<ColKey, Color>;
+
+    constructor(rowsPerFloor: number, ladderRows: number, crowdTuning: CrowdTuning, houseFloors = 0, look: TowerLook = {}) {
+        this.look = look;
+        this.col = { ...COL };
+        for (const [k, v] of Object.entries(look.colors ?? {})) if (v) this.col[k as ColKey] = hex(v);
         this.crowdTuning = crowdTuning;
         this.rowsPerFloor = rowsPerFloor;
         this.ladderRows = ladderRows;
@@ -295,6 +314,59 @@ export class Tower3D {
         });
     }
 
+    /**
+     * Scenery only, for the Home screen: the 101, the basin and the sky, without the climber,
+     * the window crowd or the eagle. The caller places the camera and calls updateAtmosphere.
+     */
+    async initShowcase(): Promise<void> {
+        this.material = await loadMaterial();
+        this.addMesh('Scenery', this.buildScenery());
+        this.buildBasin();
+    }
+
+    /**
+     * Lit windows at dusk: a warm pane inset in a share of the glass bays on every floor, just
+     * in front of the glass, in one mesh. Returns its node.
+     */
+    addWindowLights(share: number, colors: readonly Color[], seed: number): Node {
+        const mb = new MeshBuilder();
+        const S = this.sections;
+        const rand = rng(seed);
+        const rpf = this.rowsPerFloor;
+        for (const sec of S) {
+            for (let fl = sec.floorFrom; fl <= sec.floorTo; fl++) {
+                const y0 = fl === sec.floorFrom ? sec.y0 : rowY((fl - 1) * rpf);
+                const y1 = fl === sec.floorTo ? sec.y1 : rowY(fl * rpf);
+                const h = y1 - y0;
+                for (let f = 0; f < 4; f++) {
+                    for (let k = 0; k < FACADE_BAYS; k++) {
+                        if (rand() >= share) continue;
+                        const c = colors[Math.floor(rand() * colors.length)];
+                        faceQuad(mb, S, 1, 4, f + (k + 0.16) / FACADE_BAYS, f + (k + 0.84) / FACADE_BAYS, y0 + h * 0.2, y1 - h * 0.18, 0.05, c, true);
+                    }
+                }
+            }
+        }
+        const lights = this.addMesh('WindowLights', mb);
+        this.basinMeshes.push(lights.mesh);
+        return lights.node;
+    }
+
+    /**
+     * Floodlit bands at dusk: a gold strip across the top of every section (the flared rim of
+     * each tier), bright at the top edge. Returns its node.
+     */
+    addBands(share: number, bottom: Color, top: Color): Node {
+        const mb = new MeshBuilder();
+        for (const sec of this.sections) {
+            const y0 = sec.y1 - (sec.y1 - sec.y0) * share;
+            for (let f = 0; f < 4; f++) faceQuad(mb, this.sections, 1, 4, f, f + 1, y0, sec.y1 - 0.02, 0.14, bottom, true, top);
+        }
+        const bands = this.addMesh('Bands', mb);
+        this.basinMeshes.push(bands.mesh);
+        return bands.node;
+    }
+
     destroy(): void {
         this.atmosphere?.destroy();
         for (const m of this.basinMeshes) m.destroy();
@@ -305,7 +377,7 @@ export class Tower3D {
         this.camera.node.destroy();
     }
 
-    private addMesh(name: string, mb: MeshBuilder, parent: Node = this.root): { node: Node; mesh: Mesh } {
+    addMesh(name: string, mb: MeshBuilder, parent: Node = this.root): { node: Node; mesh: Mesh } {
         const node = new Node(name);
         node.layer = Layers.Enum.DEFAULT;
         parent.addChild(node);
@@ -321,12 +393,13 @@ export class Tower3D {
 
     private buildScenery(): MeshBuilder {
         const mb = new MeshBuilder();
+        const C = this.col;
         const S = this.sections;
         const faces = 4;
         const rpf = this.rowsPerFloor;
 
         // Plaza, its stone paving and the grand entrance in the middle of each face.
-        mb.quad([-PLAZA_HALF, 0, PLAZA_HALF], [PLAZA_HALF, 0, PLAZA_HALF], [PLAZA_HALF, 0, -PLAZA_HALF], [-PLAZA_HALF, 0, -PLAZA_HALF], COL.plaza, true);
+        mb.quad([-PLAZA_HALF, 0, PLAZA_HALF], [PLAZA_HALF, 0, PLAZA_HALF], [PLAZA_HALF, 0, -PLAZA_HALF], [-PLAZA_HALF, 0, -PLAZA_HALF], C.plaza, true);
         buildEntrances(mb, (y) => halfAt(S, y), faces);
 
         for (let i = 0; i < S.length; i++) {
@@ -336,32 +409,32 @@ export class Tower3D {
             for (let fl = sec.floorFrom; fl <= sec.floorTo; fl++) {
                 const y0 = fl === sec.floorFrom ? sec.y0 : rowY((fl - 1) * rpf);
                 const y1 = fl === sec.floorTo ? sec.y1 : rowY(fl * rpf);
-                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y0, y1, 0, COL.paneLow, false, COL.paneHigh);
+                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y0, y1, 0, C.paneLow, false, C.paneHigh);
                 if (fl === sec.floorFrom) continue;
-                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y0 - 0.08, y0 + 0.08, 0.04, COL.frame);
+                for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, y0 - 0.08, y0 + 0.08, 0.04, C.frame);
             }
             // Pillars between the glass bays (about 1/8 of a bay wide), wider at the corners.
             for (let f = 0; f < faces; f++) {
                 for (let k = 0; k < FACADE_BAYS; k++) {
                     const s = f + k / FACADE_BAYS;
                     const hw = (k === 0 ? 2 : 1) * 0.5 / FACADE_BAYS / 8;
-                    facePillar(mb, S, 1, faces, s, hw, sec.y0, sec.y1, 0, 0.1, COL.pillar);
+                    facePillar(mb, S, 1, faces, s, hw, sec.y0, sec.y1, 0, 0.1, C.pillar);
                 }
             }
             // Ledge on top: from this section's top edge in to the next one's bottom edge.
             const next = S[i + 1];
             const inner = next ? next.half0 : 0;
-            this.ring(mb, sec.y1, sec.half1 + 0.15, inner, COL.ledge);
+            this.ring(mb, sec.y1, sec.half1 + 0.15, inner, C.ledge);
             // Ledge lip.
-            for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, sec.y1 - 0.35, sec.y1, 0.15, COL.ledge);
+            for (let f = 0; f < faces; f++) faceQuad(mb, S, 1, faces, f, f + 1, sec.y1 - 0.35, sec.y1, 0.15, C.ledge);
             if (sec.kind === 'segment') {
                 // Ruyi ornaments at the corners, a third of the way up.
                 const y = sec.y0 + (sec.y1 - sec.y0) * 0.35;
                 const h = halfAt(S, y);
                 for (let f = 0; f < faces; f++) {
                     const p = surfacePoint(f, h, 1, faces, 0.25);
-                    mb.box(p.x, y, p.z, 0.9, 0.35, 0.9, COL.ruyi, Math.PI / 4);
-                    mb.box(p.x, y - 0.55, p.z, 0.3, 0.8, 0.3, COL.ruyi, Math.PI / 4);
+                    mb.box(p.x, y, p.z, 0.9, 0.35, 0.9, C.ruyi, Math.PI / 4);
+                    mb.box(p.x, y - 0.55, p.z, 0.3, 0.8, 0.3, C.ruyi, Math.PI / 4);
                 }
             }
         }
@@ -372,21 +445,21 @@ export class Tower3D {
         const dh = halfAt(S, dy);
         for (let f = 0; f < faces; f++) {
             const yaw = (f * Math.PI) / 2;
-            this.disc(mb, dh + 0.08, dy, yaw, 1.9, COL.disc);
-            this.disc(mb, dh + 0.14, dy, yaw, 1.2, COL.discInner);
+            this.disc(mb, dh + 0.08, dy, yaw, 1.9, C.disc);
+            this.disc(mb, dh + 0.14, dy, yaw, 1.2, C.discInner);
         }
 
         // Crown blocks above 101F, the spire with its ladder levels, the summit ring, the needle.
         let cy = roofY(rpf);
-        const crownCols = [COL.crown, COL.glass, COL.crown];
+        const crownCols = [C.crown, C.glass, C.crown];
         CROWN.forEach(([h, half], i) => {
-            mb.box(0, cy + h / 2, 0, half * 2, h, half * 2, crownCols[i % crownCols.length], 0, COL.ledge);
+            mb.box(0, cy + h / 2, 0, half * 2, h, half * 2, crownCols[i % crownCols.length], 0, C.ledge);
             cy += h;
         });
         const top = summitY(rpf, this.ladderRows);
-        mb.prism(8, cy, top, SPIRE_HALF[0], SPIRE_HALF[1], COL.spire);
-        mb.prism(16, top - 0.3, top, 1.6, 1.6, COL.ledge);
-        mb.prism(8, top, top + SPIRE_TIP, SPIRE_HALF[1], 0.04, COL.spire);
+        mb.prism(8, cy, top, SPIRE_HALF[0], SPIRE_HALF[1], C.spire);
+        mb.prism(16, top - 0.3, top, 1.6, 1.6, C.ledge);
+        mb.prism(8, top, top + SPIRE_TIP, SPIRE_HALF[1], 0.04, C.spire);
 
         return mb;
     }
@@ -448,10 +521,10 @@ export class Tower3D {
         // Practice: a clear sight line from the house to the 101 on the skyline.
         const keep: [number, number, number][] = [];
         if (this.houseFloors > 0) for (let z = 60; z <= SKYLINE_101_DIST; z += 30) keep.push([0, -z, z < SKYLINE_101_DIST ? 16 : 22]);
-        const parts = [buildTerrain(), buildWater(), ...buildCity(keep)];
+        const parts = [buildTerrain(this.look.basin), buildWater(this.look.basin), ...buildCity(keep, this.look.basin, this.look.cityCap)];
         parts.forEach((mb, i) => this.basinMeshes.push(this.addMesh(`Basin${i}`, mb).mesh));
         const top = summitY(this.rowsPerFloor, this.ladderRows);
-        this.atmosphere = new Atmosphere3D(this.root, this.camera, top, (name, mb, parent) => this.addMesh(name, mb, parent));
+        this.atmosphere = new Atmosphere3D(this.root, this.camera, top, (name, mb, parent) => this.addMesh(name, mb, parent), this.look.sky);
     }
 
     /**

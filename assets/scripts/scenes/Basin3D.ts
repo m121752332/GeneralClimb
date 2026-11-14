@@ -1,6 +1,6 @@
 import { MeshBuilder } from './MeshKit';
 import {
-    BASIN_MAX, type Block, PARKS, PARK_COLOR, PLAIN_MIN, PLAIN_Y, RIVERS, RIVER_COLOR, RIVER_Y, type RGB,
+    BASIN_MAX, type BasinLook, type Block, PARKS, PARK_COLOR, PLAIN_MIN, PLAIN_Y, RIVERS, RIVER_COLOR, RIVER_Y, type RGB,
     cityPlan, hazed, mix, mountainFoot, rgb, terrainColor, terrainHeight,
 } from '../climb/BasinShape';
 
@@ -32,8 +32,23 @@ const MOUNTAIN_RINGS = [0, 0.025, 0.06, 0.1, 0.15, 0.21, 0.28, 0.36, 0.46, 0.58,
 /** Meshes stay under 16-bit indices. */
 const MAX_VERTS = 60000;
 
+const TONES: RGB[] = ['#c9c3b8', '#a9b3b8', '#d8cfc0', '#8f9ca3', '#b7c4c9', '#9aa89a', '#c4b6a4', '#e0dcd2'].map(rgb);
+const ROOF = rgb('#e4e0d8');
+/** Facades are darker at street level. */
+const STREET_SHADE = 0.72;
+
+/** Daylight palette of the climb, hazed by distance from the tower axis. */
+export const DAY_LOOK: BasinLook = {
+    terrain: terrainColor,
+    river: (x, z) => hazed(RIVER_COLOR, Math.hypot(x, z)),
+    park: (x, z) => hazed(PARK_COLOR, Math.hypot(x, z)),
+    wall: (tone, x, z, street) => hazed(street ? mix(TONES[tone], [0, 0, 0], 1 - STREET_SHADE) : TONES[tone], Math.hypot(x, z)),
+    roof: (x, z) => hazed(ROOF, Math.hypot(x, z)),
+    tones: TONES.length,
+};
+
 /** City plain and mountain ring as one smooth-shaded indexed mesh. */
-export function buildTerrain(): MeshBuilder {
+export function buildTerrain(look: BasinLook = DAY_LOOK): MeshBuilder {
     const positions: number[] = [];
     const colors: number[] = [];
     const indices: number[] = [];
@@ -51,7 +66,7 @@ export function buildTerrain(): MeshBuilder {
             const nx = terrainHeight(x - e, z) - terrainHeight(x + e, z);
             const nz = terrainHeight(x, z - e) - terrainHeight(x, z + e);
             positions.push(x, PLAIN_Y + h, z);
-            colors.push(...lit(terrainColor(x, z, h), nx, 2 * e, nz));
+            colors.push(...lit(look.terrain(x, z, h), nx, 2 * e, nz));
         }
     }
     for (let i = 0; i < SEGMENTS; i++) {
@@ -65,7 +80,7 @@ export function buildTerrain(): MeshBuilder {
 }
 
 /** Rivers as flat ribbons sampled along their centre lines, and the parks as flat lawns. */
-export function buildWater(): MeshBuilder {
+export function buildWater(look: BasinLook = DAY_LOOK): MeshBuilder {
     const positions: number[] = [];
     const colors: number[] = [];
     const indices: number[] = [];
@@ -90,7 +105,7 @@ export function buildWater(): MeshBuilder {
             const tx = nx - px, tz = nz - pz;
             const tl = Math.hypot(tx, tz) || 1;
             const ox = (-tz / tl) * river.width / 2, oz = (tx / tl) * river.width / 2;
-            const c = hazed(RIVER_COLOR, Math.hypot(x, z));
+            const c = look.river(x, z);
             const l = put(x + ox, PLAIN_Y + RIVER_Y, z + oz, c);
             put(x - ox, PLAIN_Y + RIVER_Y, z - oz, c);
             if (prev >= 0) indices.push(prev, prev + 1, l, prev + 1, l + 1, l, prev, l, prev + 1, prev + 1, l, l + 1);
@@ -98,7 +113,7 @@ export function buildWater(): MeshBuilder {
         }
     }
     for (const [px, pz, hx, hz] of PARKS) {
-        const c = hazed(PARK_COLOR, Math.hypot(px, pz));
+        const c = look.park(px, pz);
         const y = PLAIN_Y + 0.2;
         const a = put(px - hx, y, pz - hz, c);
         put(px + hx, y, pz - hz, c);
@@ -110,17 +125,13 @@ export function buildWater(): MeshBuilder {
     return MeshBuilder.from(positions, colors, indices);
 }
 
-const TONES: RGB[] = ['#c9c3b8', '#a9b3b8', '#d8cfc0', '#8f9ca3', '#b7c4c9', '#9aa89a', '#c4b6a4', '#e0dcd2'].map(rgb);
-const ROOF = rgb('#e4e0d8');
-/** Facades are darker at street level. */
-const STREET_SHADE = 0.72;
-
 /**
  * City blocks (roof and four walls, no floor), split into meshes under MAX_VERTS.
  * `keepClear` holds [x, z, radius] spots with no blocks.
  */
-export function buildCity(keepClear: ReadonlyArray<readonly [number, number, number]> = []): MeshBuilder[] {
-    const blocks = cityPlan({ keepClear, tones: TONES.length });
+export function buildCity(keepClear: ReadonlyArray<readonly [number, number, number]> = [], look: BasinLook = DAY_LOOK,
+    cap?: (x: number, z: number) => number): MeshBuilder[] {
+    const blocks = cityPlan({ keepClear, tones: look.tones, cap });
     const out: MeshBuilder[] = [];
     let positions: number[] = [], colors: number[] = [], indices: number[] = [];
     const flush = (): void => {
@@ -131,17 +142,16 @@ export function buildCity(keepClear: ReadonlyArray<readonly [number, number, num
     };
     for (const bl of blocks) {
         if (positions.length / 3 + 20 > MAX_VERTS) flush();
-        addBlock(bl, positions, colors, indices);
+        addBlock(bl, look, positions, colors, indices);
     }
     flush();
     return out;
 }
 
-function addBlock(bl: Block, positions: number[], colors: number[], indices: number[]): void {
-    const dist = Math.hypot(bl.x, bl.z);
-    const wall = hazed(TONES[bl.tone], dist);
-    const foot = hazed(mix(TONES[bl.tone], [0, 0, 0], 1 - STREET_SHADE), dist);
-    const roof = hazed(ROOF, dist);
+function addBlock(bl: Block, look: BasinLook, positions: number[], colors: number[], indices: number[]): void {
+    const wall = look.wall(bl.tone, bl.x, bl.z, false);
+    const foot = look.wall(bl.tone, bl.x, bl.z, true);
+    const roof = look.roof(bl.x, bl.z);
     const cs = Math.cos(bl.yaw), sn = Math.sin(bl.yaw);
     const hx = bl.w / 2, hz = bl.d / 2;
     const y0 = PLAIN_Y, y1 = PLAIN_Y + bl.h;

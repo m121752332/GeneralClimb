@@ -251,6 +251,22 @@ export interface CityOptions {
     /** Points (x, z, radius) to keep clear of blocks, e.g. the practice mode's skyline 101. */
     keepClear?: ReadonlyArray<readonly [number, number, number]>;
     tones?: number;
+    /** Highest a block may be at (x, z), e.g. to keep the Home screen's view of the tower clear. */
+    cap?: (x: number, z: number) => number;
+}
+
+/**
+ * Colours of the basin meshes (Basin3D), already hazed for where they are seen from. The
+ * climb uses the day palette; the Home screen a dusk one (DuskShape).
+ */
+export interface BasinLook {
+    terrain(x: number, z: number, h: number): RGB;
+    river(x: number, z: number): RGB;
+    park(x: number, z: number): RGB;
+    /** Wall of a block with tone `tone` (0..tones-1): at street level and at the top. */
+    wall(tone: number, x: number, z: number, street: boolean): RGB;
+    roof(x: number, z: number): RGB;
+    tones: number;
 }
 
 function inPark(x: number, z: number, pad: number): boolean {
@@ -293,7 +309,8 @@ export function cityPlan(opts: CityOptions = {}): Block[] {
                 const fall = 1 - smoothstep(80, 650, r);
                 // Low right round the plaza, so the tower's base and the skyline stay in view.
                 const open = smoothstep(CITY_MIN, 170, r);
-                const h = 5 + hr * (8 + 22 * fall * open) + hr2 * hr2 * hr2 * (25 + 70 * core) * open;
+                let h = 5 + hr * (8 + 22 * fall * open) + hr2 * hr2 * hr2 * (25 + 70 * core) * open;
+                if (opts.cap) h = Math.max(4, Math.min(h, opts.cap(x, z)));
                 out.push({
                     x, z, w: size, d: step * (0.5 + dr * 0.28), h, yaw: (yr - 0.5) * 0.25, tone: Math.floor(tr * tones),
                 });
@@ -410,4 +427,278 @@ export function cloudPlan(): Cloud[] {
 /** Cloud drift speed of a layer (radians per second round the axis); wind (0..1) speeds it up. */
 export function cloudSpin(layer: number, wind: number): number {
     return ((CLOUD_LAYERS[layer][5] * Math.PI) / 180) * (1 + 3 * clamp01(wind));
+}
+
+// ================================================================== Home screen at dusk
+/*
+ * The Home screen backdrop: the 101 at dusk seen from the steep hill east of the tower
+ * (HILLS[0], our Elephant Mountain), with the basin behind it. Viewpoint, palettes, the height
+ * cap that keeps the tower in view, city lights and sky streaks. Drawn by
+ * scenes/HomeBackdrop3D with the climb's own Tower3D / Basin3D / Atmosphere3D. Kept in this
+ * file because the node tests load each pure module on its own (no cross-module imports).
+ */
+
+export type XYZ = readonly [number, number, number];
+
+/**
+ * Camera above the hill's western slope, towards the tower and well above the city, like the
+ * view from the Elephant Mountain trail: the tower's base drops out of the frame.
+ */
+export const HOME_EYE: XYZ = [195, 120, 45];
+/** Look-at point on the tower axis: the horizon sits low and the spire fits on top. */
+export const HOME_LOOK: XYZ = [0, 150, 0];
+/** Vertical field of view (degrees), the same framing on any aspect ratio. */
+export const HOME_FOV = 64;
+/** On landscape screens the tower stands this far left of centre (share of the half width), clear of the menu. */
+export const HOME_WIDE_SHIFT = 0.42;
+
+/**
+ * Yaw (radians, turning the camera left of the tower) that puts the tower HOME_WIDE_SHIFT left of centre
+ * on a landscape screen of aspect `w / h`; 0 on portrait screens.
+ */
+export function homeYawShift(aspect: number): number {
+    if (aspect <= 1) return 0;
+    const tanH = Math.tan((HOME_FOV / 2) * (Math.PI / 180)) * aspect;
+    return Math.atan(tanH * HOME_WIDE_SHIFT * smoothstep(1, 1.4, aspect));
+}
+/** The camera drifts round the axis by up to this much (radians) over HOME_SWAY_SEC. */
+export const HOME_SWAY = 0.035;
+export const HOME_SWAY_SEC = 80;
+/** Height of the sight line where it meets the tower axis (just below the frame's bottom edge). */
+const SIGHT_BASE_Y = 30;
+/** Round the camera the city stays this low (its roofs fill the bottom of the frame). */
+const NEAR_EYE = 150;
+const NEAR_EYE_H = 22;
+/** Half width of the corridor to the tower where the city is held below the sight line. */
+const SIGHT_HALF = 24;
+
+/** Camera position at time `t` (seconds): a slow sway round the tower axis. */
+export function homeEye(t: number): [number, number, number] {
+    const a = HOME_SWAY * Math.sin((t / HOME_SWAY_SEC) * Math.PI * 2);
+    const c = Math.cos(a), s = Math.sin(a);
+    return [HOME_EYE[0] * c - HOME_EYE[2] * s, HOME_EYE[1], HOME_EYE[0] * s + HOME_EYE[2] * c];
+}
+
+function eyeDist(x: number, z: number): number {
+    return Math.hypot(x - HOME_EYE[0], z - HOME_EYE[2]);
+}
+
+// ------------------------------------------------------------------ dusk sky
+
+/** Purple overhead fading to peach and pink at the horizon (same elevations as the day sky). */
+const DUSK_SKY: readonly SkyStop[] = [
+    [-1, rgb('#2a2238')], [-0.02, rgb('#e6ad98')], [0, rgb('#f7c9a5')], [0.06, rgb('#f1ada3')], [0.2, rgb('#c58aa6')],
+    [0.5, rgb('#715a95')], [1, rgb('#2c2a60')],
+];
+
+/** Dusk sky stops (altitude and gloom do not change it on the Home screen). */
+export function duskSky(): SkyStop[] {
+    return DUSK_SKY.map(([e, c]) => [e, [...c]] as SkyStop);
+}
+
+/** No cumulus over the Home screen: only the thin streaks (duskStreaks) catch the light. */
+export function homeCloud(_c: Cloud): boolean {
+    return false;
+}
+
+export interface Streak {
+    /** Centre, and the unit vector along its length (horizontal, across the line of sight). */
+    x: number;
+    y: number;
+    z: number;
+    ax: number;
+    az: number;
+    len: number;
+    thick: number;
+    color: RGB;
+}
+
+/** Distance of the sky streaks from the camera (inside the sky dome). */
+export const STREAK_DIST = 1500;
+
+/** Thin streaky clouds low in the dusk sky behind the tower. */
+export function duskStreaks(): Streak[] {
+    const rand = rng(77);
+    const out: Streak[] = [];
+    const view = Math.atan2(HOME_LOOK[0] - HOME_EYE[0], HOME_LOOK[2] - HOME_EYE[2]);
+    for (let i = 0; i < 18; i++) {
+        const yaw = view + (rand() - 0.5) * 2.4;
+        const elev = (3 + rand() * rand() * 38) * (Math.PI / 180);
+        const dx = Math.sin(yaw) * Math.cos(elev), dz = Math.cos(yaw) * Math.cos(elev), dy = Math.sin(elev);
+        const sky = skyColorAt(DUSK_SKY, dy);
+        const glow = elev < 0.18 ? rgb('#ffe2d2') : rgb('#e7b2cb');
+        out.push({
+            x: HOME_EYE[0] + dx * STREAK_DIST,
+            y: HOME_EYE[1] + dy * STREAK_DIST,
+            z: HOME_EYE[2] + dz * STREAK_DIST,
+            ax: Math.cos(yaw),
+            az: -Math.sin(yaw),
+            len: 400 + rand() * 900,
+            thick: 8 + rand() * 26,
+            color: mix(sky, glow, 0.08 + rand() * 0.14),
+        });
+    }
+    return out;
+}
+
+// ------------------------------------------------------------------ dusk basin
+
+const DUSK_HAZE = rgb('#e3a998');
+
+/** Share of dusk haze at a distance from the camera: far ranges fade to rose and peach. */
+export function duskHaze(dist: number): number {
+    return 0.82 * Math.pow(clamp01((dist - 120) / 1600), 0.75);
+}
+
+function duskHazed(c: RGB, x: number, z: number, k = 1): [number, number, number] {
+    return mix(c, DUSK_HAZE, duskHaze(eyeDist(x, z)) * k);
+}
+
+const DUSK_PLAIN = rgb('#3b3245');
+const DUSK_PLAIN_FAR = rgb('#4b3d4c');
+const DUSK_FOOTHILL = rgb('#563f4e');
+const DUSK_FOREST = rgb('#664653');
+const DUSK_HIGH = rgb('#82575f');
+const DUSK_TOPS = rgb('#94666a');
+const DUSK_TONES: RGB[] = ['#221e33', '#2a2438', '#302841', '#1f2030', '#372d42', '#28222f'].map(rgb);
+const DUSK_ROOF = rgb('#3a3247');
+const DUSK_RIVER = rgb('#8e6a7e');
+const DUSK_PARK = rgb('#2f3038');
+
+/** Basin colours at dusk, hazed by distance from the Home camera. */
+export const DUSK_BASIN: BasinLook = {
+    terrain(x, z, h) {
+        const r = Math.hypot(x, z);
+        let c: [number, number, number] = mix(DUSK_PLAIN, DUSK_PLAIN_FAR, smoothstep(330, 480, r));
+        if (h > 0.5) {
+            c = mix(c, DUSK_FOOTHILL, smoothstep(0.5, 12, h));
+            c = mix(c, DUSK_FOREST, smoothstep(25, 90, h));
+            c = mix(c, DUSK_HIGH, smoothstep(110, 170, h));
+            c = mix(c, DUSK_TOPS, smoothstep(190, 240, h));
+        }
+        return duskHazed(c, x, z);
+    },
+    river: (x, z) => duskHazed(DUSK_RIVER, x, z, 0.6),
+    park: (x, z) => duskHazed(DUSK_PARK, x, z),
+    wall: (tone, x, z, street) => duskHazed(street ? mix(DUSK_TONES[tone], [0, 0, 0], 0.3) : DUSK_TONES[tone], x, z, 0.6),
+    roof: (x, z) => duskHazed(DUSK_ROOF, x, z, 0.6),
+    tones: DUSK_TONES.length,
+};
+
+/** The 101 at dusk: dark glass, gold ledges and ornaments. Keys are Tower3D's colour names. */
+export const DUSK_TOWER: Record<string, string> = {
+    paneLow: '#151a33',
+    paneHigh: '#343a60',
+    pillar: '#4a4258',
+    frame: '#5b4d60',
+    ledge: '#d9a650',
+    // The crown is floodlit gold; the spire a dark silhouette.
+    glass: '#c48a42',
+    crown: '#e9b860',
+    spire: '#3a3446',
+    disc: '#c8973f',
+    discInner: '#6d4c2c',
+    ruyi: '#f0c870',
+    plaza: '#4e4552',
+};
+
+/** Warm lit windows on the tower, and the share of glass bays lit. */
+export const WINDOW_LIGHTS = ['#ffd38a', '#ffe6b0', '#f4b366', '#fff1d2'];
+export const WINDOW_SHARE = 0.4;
+/** Floodlit gold band on top of every tier: share of the tier's height, bottom and top colour. */
+export const BAND_SHARE = 0.13;
+export const BAND_COLORS = ['#a8732e', '#ffd27a'] as const;
+
+/**
+ * Highest a city block may be at (x, z): between the camera and the tower the blocks stay
+ * below the sight line to the tower's foot, so its base tiers are never hidden.
+ */
+export function homeCityCap(x: number, z: number): number {
+    const ex = HOME_EYE[0], ez = HOME_EYE[2];
+    const near = Math.hypot(x - ex, z - ez) < NEAR_EYE ? NEAR_EYE_H : Infinity;
+    return Math.min(near, sightCap(x, z));
+}
+
+function sightCap(x: number, z: number): number {
+    const ex = HOME_EYE[0], ez = HOME_EYE[2];
+    const vx = -ex, vz = -ez;
+    const vv = vx * vx + vz * vz;
+    const u = ((x - ex) * vx + (z - ez) * vz) / vv;
+    if (u < 0 || u > 1.05) return Infinity;
+    const lateral = Math.abs((x - ex) * vz - (z - ez) * vx) / Math.sqrt(vv);
+    if (lateral > SIGHT_HALF * 3) return Infinity;
+    const line = HOME_EYE[1] + (SIGHT_BASE_Y - HOME_EYE[1]) * Math.min(1, u) - PLAIN_Y - 3;
+    return line + Math.max(0, lateral - SIGHT_HALF) * 3;
+}
+
+// ------------------------------------------------------------------ city lights
+
+export interface CityLight {
+    x: number;
+    y: number;
+    z: number;
+    /** Side of the camera-facing square. */
+    size: number;
+    color: RGB;
+    /** Twinkle group (0..LIGHT_GROUPS-1). */
+    group: number;
+}
+
+export const LIGHT_GROUPS = 3;
+const LIGHT_COLORS: RGB[] = ['#ffd890', '#ffeccb', '#ffc46a', '#dfe9ff', '#ff9a5a'].map(rgb);
+/** Light squares are about this many screen pixels (at 1280 px tall) at any distance. */
+const LIGHT_PX = 3;
+const PX_PER_UNIT_K = 1280 / (2 * Math.tan((HOME_FOV / 2) * (Math.PI / 180)));
+
+function lightSize(dist: number): number {
+    return (LIGHT_PX * dist) / PX_PER_UNIT_K;
+}
+
+/**
+ * Lit windows on the city blocks (on the side facing the camera) and street lights across the
+ * plain. Deterministic: the same city every visit.
+ */
+export function cityLights(blocks: readonly Block[]): CityLight[] {
+    const rand = rng(2024);
+    const out: CityLight[] = [];
+    const push = (x: number, y: number, z: number): void => {
+        const d = eyeDist(x, z);
+        const c = LIGHT_COLORS[Math.floor(rand() * LIGHT_COLORS.length)];
+        out.push({ x, y, z, size: lightSize(d), color: mix(c, DUSK_HAZE, duskHaze(d) * 0.45), group: Math.floor(rand() * LIGHT_GROUPS) });
+    };
+    for (const bl of blocks) {
+        const dx = HOME_EYE[0] - bl.x, dz = HOME_EYE[2] - bl.z;
+        const dl = Math.hypot(dx, dz) || 1;
+        const nx = dx / dl, nz = dz / dl;
+        const out0 = Math.max(bl.w, bl.d) / 2 + 0.4;
+        const n = Math.min(24, 3 + Math.floor(bl.h / 3));
+        for (let k = 0; k < n; k++) {
+            if (rand() > 0.8) continue;
+            const side = (rand() - 0.5) * Math.min(bl.w, bl.d) * 0.8;
+            const y = PLAIN_Y + 1.5 + rand() * Math.max(0.5, bl.h - 2.5);
+            push(bl.x + nx * out0 - nz * side, y, bl.z + nz * out0 + nx * side);
+        }
+    }
+    // Street lights.
+    let placed = 0;
+    for (let tries = 0; placed < 3500 && tries < 20000; tries++) {
+        const a = rand() * Math.PI * 2;
+        const r = CITY_MIN + Math.sqrt(rand()) * (CITY_EDGE - CITY_MIN);
+        const x = Math.sin(a) * r, z = -Math.cos(a) * r;
+        if (riverBankDist(x, z) < 6 || terrainHeight(x, z) > 1.5) continue;
+        push(x, PLAIN_Y + 0.8, z);
+        placed++;
+    }
+    return out;
+}
+
+/** Twinkle brightness (0..1) of a light group at time `t`. */
+export function twinkle(group: number, t: number): number {
+    const w = 1.3 + group * 0.7;
+    return 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t * w + group * 2.1));
+}
+
+/** Aircraft warning light on the spire tip: on for 0.9 s of every 1.5 s. */
+export function tipLightOn(t: number): boolean {
+    return t % 1.5 < 0.9;
 }

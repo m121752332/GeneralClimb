@@ -15,7 +15,7 @@ import { openSettings } from '../ui/SettingsPanel';
 import { playIntro } from '../ui/IntroOverlay';
 import { Toast } from '../ui/Toast';
 import { STYLE, cachedBrandIcon, hex, loadBrandIcon, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
-import { buildBackdrop } from './HomeBackdrop';
+import { HomeBackdrop3D } from './HomeBackdrop3D';
 
 const { ccclass } = _decorator;
 
@@ -37,7 +37,7 @@ export class Home extends Component {
 
     start(): void {
         applyScreenFit();
-        buildBackdrop(this.node);
+        HomeBackdrop3D.mount(this.node);
         this.buildTitle();
         this.buildMenu();
         this.buildCorners();
@@ -199,7 +199,8 @@ export class Home extends Component {
         const vw = ver.addComponent(Widget);
         vw.isAlignBottom = true;
         vw.isAlignRight = true;
-        vw.bottom = 16;
+        // Above the place caption (HomeBackdrop3D).
+        vw.bottom = 72;
         vw.right = 20;
         this.version = makeLabel(ver, 'levels.json …', 22, hex('#e8ecff', 220), { outline: hex('#0b1024'), outlineWidth: 2 });
         this.version.node.getComponent(UITransform)!.setAnchorPoint(1, 0.5);
