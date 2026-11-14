@@ -162,6 +162,8 @@
 
 **第二版排行榜**：沿用 Firestore；登入者每人一筆最佳紀錄，依樓層高→低、時間短→長取前 50（複合索引）；第一層防作弊用安全規則擋不合理數字；伺服器驗證需 Cloud Functions（Blaze 方案）。備選 Supabase（可接 Firebase 登入，[文件](https://supabase.com/docs/guides/auth/third-party/firebase-auth)；免費專案一週低活動會暫停）。
 
+**登頂次數排行榜（2026-11-14 修訂，提前到第一版）**：Firestore `summits/{uid}` = `{ name, count, updatedAt }`，任何人可讀，只能寫自己的。第一次上傳 count 必須是 1；之後每增加 k 次，`request.time` 要比 `updatedAt` 晚 k × `cloud.minSummitSec`（300 秒，`levels.json`）；count 只增不減，只改名時 count 與 updatedAt 不動；可刪自己的（刪除帳號）。本機 `summits - syncedSummits` 依規則允許的量分次上傳，不會遺失也不會重複。排行榜依 count 由高到低取 `cloud.leaderboardSize` 名，同次數先達成者在前。Firebase SDK（compat 版）在 Boot「載入帳號」階段從 gstatic 載入，載入失敗一律以訪客進行。帳號面板：Email（只顯示不儲存）、同步狀態＋立即同步、玩家名稱 `名字#六位數`、登出、刪除帳號、隱私權政策／服務條款（`build-templates/web-mobile/privacy.html`、`terms.html`）。設定步驟見 `docs/firebase-setup.md`。
+
 ## ADR-10 3D 塔身與環繞攀爬（2026-11-13）
 
 使用者決定：所有攀爬關卡改成 3D，以台北 101 主體為中心，鏡頭固定看著大樓、可 360° 旋轉；霍將軍可繞到其他面爬（決策卡選「四面環繞攀爬」）。

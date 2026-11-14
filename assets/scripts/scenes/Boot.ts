@@ -1,6 +1,7 @@
 import { _decorator, Color, Component, director, Graphics, Label, Node, UITransform } from 'cc';
 import { LevelLoader } from '../config/LevelLoader';
 import type { LevelConfig } from '../config/LevelConfig';
+import { auth } from '../core/AuthService';
 import { type BootSnapshot, type BootStage, STAGE_MARK, describeWeather, runStages } from '../core/BootStages';
 import { formatBest, readLocalBest } from '../core/LocalBest';
 import { applyScreenFit } from '../core/ScreenFit';
@@ -61,7 +62,15 @@ export class Boot extends Component {
                     settings();
                     let storage: Storage | null = null;
                     try { storage = globalThis.localStorage ?? null; } catch { storage = null; }
-                    return t('boot.guest', { best: formatBest(readLocalBest(storage)).replace('最佳紀錄：', '最佳 ') });
+                    const best = formatBest(readLocalBest(storage)).replace('最佳紀錄：', '最佳 ');
+                    // ADR-09: load Firebase here so the sign-in popup can open straight from Home's
+                    // click; it never fails Boot, guests just play on.
+                    const svc = auth();
+                    if (this.config) svc.minSummitSec = this.config.cloud.minSummitSec;
+                    await svc.init();
+                    if (svc.user) return t('boot.signedIn', { name: svc.user.name, best });
+                    if (svc.state === 'error') return t('boot.cloudError', { best });
+                    return t('boot.guest', { best });
                 },
             },
             {

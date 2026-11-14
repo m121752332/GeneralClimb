@@ -1,18 +1,59 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
     // 玩家自己的資料與每局紀錄
     match /players/{uid}/{doc=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if signedInAs(uid);
     }
-    // 最佳紀錄（第二版排行榜查這裡）
+
+    // 最佳紀錄（樓層／時間排行榜之後查這裡）
     match /best/{uid} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == uid
+      allow write: if signedInAs(uid)
         && request.resource.data.maxFloor is int
         && request.resource.data.maxFloor <= 102          // 102 = 塔尖
         && (request.resource.data.bestClearMs == null
             || request.resource.data.bestClearMs >= 300000); // 低於 5 分鐘視為不合理，實測後調整
+    }
+
+    // 登頂次數排行榜（ADR-09）：{ name, count, updatedAt }，任何人可讀、只能寫自己的。
+    // 防作弊第一層：count 只能變大，且每多 1 次至少要隔 MIN_SUMMIT_SEC 秒（真實登頂一輪的最短時間）。
+    // MIN_SUMMIT_SEC = levels.json cloud.minSummitSec（300），tests/cloud-summit.test.ts 會檢查兩邊一致。
+    match /summits/{uid} {
+      function validShape(d) {
+        return d.keys().hasOnly(['name', 'count', 'updatedAt'])
+          && d.name is string && d.name.size() >= 1 && d.name.size() <= 24 // 程式截到 12 字，留給 emoji 等多碼字元
+          && d.count is int;
+      }
+
+      allow read: if true;
+
+      // 第一次上傳只能是 1 次。
+      allow create: if signedInAs(uid)
+        && validShape(request.resource.data)
+        && request.resource.data.count == 1
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedInAs(uid)
+        && validShape(request.resource.data)
+        && (
+          // 只改名：次數與時間都不動
+          (request.resource.data.count == resource.data.count
+            && request.resource.data.updatedAt == resource.data.updatedAt)
+          ||
+          // 增加 k 次：距上次至少 k × MIN_SUMMIT_SEC 秒
+          (request.resource.data.count > resource.data.count
+            && request.resource.data.updatedAt == request.time
+            && request.time >= resource.data.updatedAt
+                 + duration.value((request.resource.data.count - resource.data.count) * 300, 's'))
+        );
+
+      // 刪除帳號：只能刪自己的（重新建立又只能從 1 次開始）。
+      allow delete: if signedInAs(uid);
     }
   }
 }

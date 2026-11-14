@@ -6,6 +6,7 @@ import type { LevelConfig } from '../config/LevelConfig';
 import { LevelLoader } from '../config/LevelLoader';
 import { effectiveSpeed, nextSpeed, speedText } from '../core/ClimbSpeed';
 import { GameSession } from '../core/GameSession';
+import { auth } from '../core/AuthService';
 import { SPIRE_TIP_FLOOR, recordLocalBest } from '../core/LocalBest';
 import { afterFall, afterLevelCleared, afterSummit, updateProgress } from '../core/Progress';
 import { levelName, t } from '../core/I18n';
@@ -445,6 +446,8 @@ export class Climb extends Component {
             // One round (周目) done: unlocks go back to level 1, the summit count goes up.
             recordLocalBest(this.storage(), { maxFloor: SPIRE_TIP_FLOOR, bestClearMs: Math.round(sim.climbSec * 1000) });
             const p = updateProgress(this.storage(), (q) => afterSummit(q, new Date()));
+            // Signed in: add it to the cloud summit count right away (guests sync after signing in).
+            void auth().syncSummits(this.storage());
             this.startIndex = 0;
             round = `\n${t('climb.summitRound', { rounds: p.rounds, summits: p.summits, next: p.rounds + 1 })}`;
         }

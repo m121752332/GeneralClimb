@@ -7,6 +7,8 @@ import type { LevelConfig } from '../config/LevelConfig';
 import {
     type FsDocument, type FsNavigator, fullscreenSupport, isFullscreen, onFullscreenChange, toggleFullscreen,
 } from '../core/Fullscreen';
+import { auth } from '../core/AuthService';
+import { formatCloudCount } from '../core/CloudSummit';
 import { GameSession } from '../core/GameSession';
 import { lang, nextLang, t } from '../core/I18n';
 import { formatBest, readLocalBest } from '../core/LocalBest';
@@ -14,6 +16,8 @@ import { formatRound, readProgress, unlockedIndex } from '../core/Progress';
 import { applyScreenFit } from '../core/ScreenFit';
 import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
+import { openAccountPanel } from '../ui/AccountPanel';
+import { openLeaderboard } from '../ui/LeaderboardPanel';
 import { openLevelSelect } from '../ui/LevelSelectPanel';
 import { openSettings } from '../ui/SettingsPanel';
 import { playIntro } from '../ui/IntroOverlay';
@@ -36,6 +40,9 @@ export class Home extends Component {
     private gmBadge: Node | null = null;
     private drawFullscreen: (() => void) | null = null;
     private offFullscreen: (() => void) | null = null;
+    private roundLabel: Label | null = null;
+    private googleLabel: Label | null = null;
+    private offAuth: (() => void) | null = null;
 
     onLoad(): void {
         (globalThis as { __GC_SCENE?: string }).__GC_SCENE = 'Home';
@@ -65,6 +72,11 @@ export class Home extends Component {
             });
         }
 
+        // Cloud (ADR-09): refresh the sign-in button and the cloud count, and push this device's
+        // unsynced summits whenever a player is signed in.
+        this.offAuth = auth().onChange(() => this.syncAccount());
+        this.syncAccount();
+
         LevelLoader.load().then((cfg) => {
             this.config = cfg;
             this.version.string = `levels.json v${cfg.version}`;
@@ -74,6 +86,30 @@ export class Home extends Component {
             this.versionFailed = true;
             this.version.node.active = true;
         });
+    }
+
+    private lastUid: string | null = null;
+
+    private syncAccount(): void {
+        const svc = auth();
+        const uid = svc.user?.uid ?? null;
+        if (uid && uid !== this.lastUid) void svc.syncSummits(this.storage());
+        this.lastUid = uid;
+        if (this.googleLabel?.isValid) this.googleLabel.string = svc.user ? svc.user.name : t('home.google');
+        if (this.roundLabel?.isValid) {
+            const cloud = svc.user ? formatCloudCount(svc.cloudCount) : '';
+            this.roundLabel.string = formatRound(readProgress(this.storage())) + (cloud ? ` · ${cloud}` : '');
+        }
+    }
+
+    private onGoogle(): void {
+        const svc = auth();
+        if (svc.user) {
+            openAccountPanel(this.node, { storage: this.storage(), toast: (t) => this.toast.show(t), onClose: () => this.toast.hide() });
+            return;
+        }
+        // signInWithPopup must start inside this click (ADR-09), so nothing async runs before it.
+        void svc.signIn().then((text) => this.toast.show(text));
     }
 
     private version!: Label;
@@ -115,8 +151,8 @@ export class Home extends Component {
         const bestBg = best.addComponent(Graphics);
         roundRect(bestBg, 380, 54, 27, hex('#0b1024', 190), hex('#ffc94a', 160), 2);
         makeLabel(best, formatBest(readLocalBest(this.storage())), 26, hex('#ffe2a0'), { bold: true });
-        // 周目 and total summits (core/Progress); the cloud total joins this with Google sign-in (M3).
-        makeLabel(this.node, formatRound(readProgress(this.storage())), 24, hex('#c9d3ff'), {
+        // 周目 and total summits (core/Progress); syncAccount adds the cloud total when signed in.
+        this.roundLabel = makeLabel(this.node, formatRound(readProgress(this.storage())), 24, hex('#c9d3ff'), {
             y: 52, bold: true, outline: hex('#0b1024'), outlineWidth: 2,
         });
 
@@ -135,8 +171,11 @@ export class Home extends Component {
             toast: (text) => this.toast.show(text),
             onClose: () => this.toast.hide(),
         }), -colX, -345);
-        const google = makeButton(this.node, t('home.google'), btnW, btnH, STYLE.light, () => this.toast.show(t('home.googleSoon')), colX, -345);
+        const google = makeButton(this.node, t('home.google'), btnW, btnH, STYLE.light, () => this.onGoogle(), colX, -345);
         google.label.node.setPosition(18, 3);
+        google.label.overflow = Label.Overflow.SHRINK;
+        google.label.node.getComponent(UITransform)!.setContentSize(btnW - 100, btnH - 10);
+        this.googleLabel = google.label;
         const g = makeNode('G', google.node, 0, 0, -btnW / 2 + 40, 3).addComponent(Graphics);
         g.circle(0, 0, 20);
         g.fillColor = Color.WHITE;
@@ -145,6 +184,10 @@ export class Home extends Component {
         g.strokeColor = hex('#d0d4e4');
         g.stroke();
         makeLabel(g.node, 'G', 26, hex('#4285f4'), { bold: true, y: 1 });
+
+        makeButton(this.node, t('home.leaderboard'), btnW * 2 + 20, 80, STYLE.gold, () => openLeaderboard(
+            this.node, this.config?.cloud.leaderboardSize ?? 20, () => this.toast.hide(),
+        ), 0, -445);
     }
 
     private buildCorners(): void {
@@ -303,6 +346,8 @@ export class Home extends Component {
     onDestroy(): void {
         this.offFullscreen?.();
         this.offFullscreen = null;
+        this.offAuth?.();
+        this.offAuth = null;
     }
 
     private doc(): FsDocument | undefined {
