@@ -30,13 +30,9 @@ const COL = {
     emblemRing: hex('#9aa3a3'),
     paving: hex('#cbc6bc'),
     paving2: hex('#c2bcb1'),
-    pole: hex('#eef0f0'),
-    lamp: hex('#4a5052'),
     joint: hex('#a9a397'),
     kerb: hex('#8e8a83'),
     forecourt: hex('#bdb7ac'),
-    planter: hex('#cfcbc2'),
-    hedge: hex('#4f7a45'),
 };
 
 function hex(s: string): Color {
@@ -185,27 +181,6 @@ function buildFace(mb: MeshBuilder, half: (y: number) => number, f: number, face
             quadToward(mb, P(u - 0.12, CANOPY_LOW + 0.02, o - 0.12), P(u + 0.12, CANOPY_LOW + 0.02, o - 0.12),
                 P(u + 0.12, CANOPY_LOW + 0.02, o + 0.12), P(u - 0.12, CANOPY_LOW + 0.02, o + 0.12), DOWN, COL.emblem);
         }
-    }
-
-    // Flagpoles (bare white masts) and street lamps along the forecourt.
-    for (const s of [-1, 1]) {
-        for (const k of [0, 1]) {
-            const c = g(s * (FORECOURT_HALF + 4.6 + k * 1.6), 1.6 + k * 0.6, 0);
-            mb.prism(6, 0, 13, 0.1, 0.07, COL.pole, c[0], c[2]);
-            mb.prism(6, 13, 13.25, 0.16, 0.16, COL.pole, c[0], c[2]);
-        }
-        for (const o of [5.5, 10]) {
-            const c = g(s * (FORECOURT_HALF + 0.7), o, 0);
-            mb.prism(6, 0, 4.6, 0.09, 0.07, COL.lamp, c[0], c[2]);
-            mb.box(c[0], 4.7, c[2], 0.5, 0.22, 0.5, COL.lamp, yaw, COL.emblem);
-        }
-    }
-
-    // Hedge planters either side of the forecourt.
-    for (const s of [-1, 1]) {
-        const c = g(s * (FORECOURT_HALF + 1.8), 3.2, 0);
-        mb.box(c[0], 0.35, c[2], 2.8, 0.7, 1.3, COL.planter, yaw, COL.planter);
-        mb.box(c[0], 0.85, c[2], 2.5, 0.35, 1.05, COL.hedge, yaw, COL.hedge);
     }
 }
 
