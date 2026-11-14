@@ -12,14 +12,18 @@ export const ICON_FILES = ['favicon.ico', 'favicon-32x32.png', 'apple-touch-icon
 export const PAGE_FILES = ['privacy.html', 'terms.html'];
 
 const MARKER = '<!-- site-icons -->';
+// The game fills the window, so the page never scrolls (Cocos' style.css leaves overflow visible,
+// which shows scrollbars on desktop browsers).
+export const NO_SCROLL_STYLE = '<style>html, body { overflow: hidden; width: 100%; height: 100%; margin: 0; } #GameDiv { overflow: hidden; }</style>';
 export const ICON_LINKS = [
     MARKER,
     '<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">',
     '<link rel="icon" type="image/png" href="favicon-32x32.png" sizes="32x32">',
     '<link rel="apple-touch-icon" href="apple-touch-icon.png">',
+    NO_SCROLL_STYLE,
 ].join('\n  ');
 
-/** Adds the icon links before </head>. Returns the html unchanged if they are already there. */
+/** Adds the icon links and the no-scrollbar style before </head>. Returns the html unchanged if they are already there. */
 export function injectIconLinks(html) {
     if (html.includes(MARKER)) return html;
     if (!/<\/head>/i.test(html)) throw new Error('index.html has no </head>');
