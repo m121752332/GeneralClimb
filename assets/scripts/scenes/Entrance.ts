@@ -1,7 +1,7 @@
 import { Color } from 'cc';
 import {
     CANOPY_HALF, CANOPY_LOW, CANOPY_TOP, DOOR_HALF, DOOR_TOP, FORECOURT_HALF, FORECOURT_LEN, LINTEL_H, PAVING_MARGIN,
-    PORTAL_HALF, PORTAL_TOP, SIGN_TOP, STONE_OUT, TILE, canopyFront, canopyLow,
+    PORTAL_HALF, PORTAL_TOP, SIGN_TOP, SPANDREL_TOP, STONE_OUT, TILE, canopyFront, canopyLow,
 } from '../climb/EntranceShape';
 import { MeshBuilder, type V3 } from './MeshKit';
 
@@ -12,21 +12,26 @@ import { MeshBuilder, type V3 } from './MeshKit';
  */
 
 const COL = {
-    stone: hex('#dcdfdc'),
+    stone: hex('#d6d9d6'),
     stoneTop: hex('#eceeeb'),
-    doorLow: hex('#1c3a40'),
-    doorHigh: hex('#3f6d72'),
-    doorLeaf: hex('#14292d'),
+    stoneGroove: hex('#b4b9b6'),
+    doorLow: hex('#3e6468'),
+    doorHigh: hex('#86aeb0'),
+    doorLeaf: hex('#2b4c50'),
     mullion: hex('#b9c1c1'),
     sign: hex('#e9ece8'),
     signText: hex('#3b4a4e'),
-    canopy: hex('#c3c9cb'),
-    canopyHigh: hex('#e2e6e7'),
-    canopyTop: hex('#aab1b3'),
-    canopyUnder: hex('#5b6365'),
+    // Brushed grey metal, darker at the bottom of the fascia.
+    canopy: hex('#7f888b'),
+    canopyHigh: hex('#b3babc'),
+    canopyTop: hex('#969ea0'),
+    canopyUnder: hex('#4a5254'),
     emblem: hex('#f4f4f0'),
     emblemRing: hex('#9aa3a3'),
     paving: hex('#cbc6bc'),
+    paving2: hex('#c2bcb1'),
+    pole: hex('#eef0f0'),
+    lamp: hex('#4a5052'),
     joint: hex('#a9a397'),
     kerb: hex('#8e8a83'),
     forecourt: hex('#bdb7ac'),
@@ -63,6 +68,14 @@ function buildPaving(mb: MeshBuilder, h0: number): void {
     const k = 0.7;
     for (const [x0, z0, x1, z1] of [[-m - k, m, m + k, m + k], [-m - k, -m - k, m + k, -m], [m, -m, m + k, m], [-m - k, -m, -m, m]]) {
         mb.quad([x0, 0.016, z1], [x1, 0.016, z1], [x1, 0.016, z0], [x0, 0.016, z0], COL.kerb, true);
+    }
+    // Large slabs in two close tones, so the plaza doesn't read as a flat sheet.
+    for (let x = -m, i = 0; x < m - 1e-6; x += TILE, i++) {
+        for (let z = -m, j = 0; z < m - 1e-6; z += TILE, j++) {
+            if ((i * 7 + j * 3) % 4 !== 0) continue;
+            const x1 = Math.min(m, x + TILE), z1 = Math.min(m, z + TILE);
+            mb.quad([x, 0.017, z1], [x1, 0.017, z1], [x1, 0.017, z], [x, 0.017, z], COL.paving2, true);
+        }
     }
     const w = 0.035;
     for (let v = -m + TILE; v < m - 1e-6; v += TILE) {
@@ -112,25 +125,39 @@ function buildFace(mb: MeshBuilder, half: (y: number) => number, f: number, face
 
     // Glass door wall: dark glass, the two door leaves darker, metal mullions and a transom.
     panel(-DOOR_HALF, DOOR_HALF, 0, DOOR_TOP, 0.3, COL.doorLow, COL.doorHigh);
-    panel(-0.85, 0.85, 0, 2.15, 0.31, COL.doorLeaf);
+    for (const c of [-1.2, 0, 1.2]) panel(c - 0.36, c + 0.36, 0, 2.15, 0.31, COL.doorLeaf);
     for (let u = -DOOR_HALF; u <= DOOR_HALF + 1e-6; u += 0.8) slab(u - 0.04, u + 0.04, 0, DOOR_TOP, 0.3, 0.36, COL.mullion);
     slab(-DOOR_HALF, DOOR_HALF, 2.15, 2.23, 0.3, 0.36, COL.mullion);
     // Lit sign band over the doors, with a dark lettering strip (no real text).
     slab(-DOOR_HALF, DOOR_HALF, DOOR_TOP, SIGN_TOP, 0.3, 0.42, COL.sign);
     panel(-0.9, 0.9, DOOR_TOP + 0.16, SIGN_TOP - 0.16, 0.425, COL.signText);
 
-    // Stone portal: a pier each side, a lintel with a cornice on top.
+    // Stone portal: a pier each side rising several floors, a stone spandrel from the sign
+    // band to above the canopy, glass (the level's own) between the piers, a head block on top.
     slab(-PORTAL_HALF, -DOOR_HALF, 0, PORTAL_TOP, 0, STONE_OUT, COL.stone, COL.stoneTop);
     slab(DOOR_HALF, PORTAL_HALF, 0, PORTAL_TOP, 0, STONE_OUT, COL.stone, COL.stoneTop);
-    slab(-DOOR_HALF, DOOR_HALF, PORTAL_TOP - LINTEL_H, PORTAL_TOP, 0, STONE_OUT, COL.stone, COL.stoneTop);
-    slab(-PORTAL_HALF - 0.12, PORTAL_HALF + 0.12, PORTAL_TOP - 0.14, PORTAL_TOP + 0.04, 0, STONE_OUT + 0.1, COL.stoneTop);
+    slab(-DOOR_HALF, DOOR_HALF, SIGN_TOP, SPANDREL_TOP, 0, STONE_OUT, COL.stone, COL.stoneTop);
+    const head = PORTAL_TOP - LINTEL_H;
+    slab(-DOOR_HALF, DOOR_HALF, head, PORTAL_TOP, 0, STONE_OUT, COL.stone, COL.stoneTop);
+    // Stepped cornice and a groove under the head block.
+    slab(-PORTAL_HALF - 0.12, PORTAL_HALF + 0.12, PORTAL_TOP - 0.18, PORTAL_TOP + 0.06, 0, STONE_OUT + 0.12, COL.stoneTop);
+    slab(-PORTAL_HALF - 0.25, PORTAL_HALF + 0.25, PORTAL_TOP + 0.06, PORTAL_TOP + 0.3, 0, STONE_OUT + 0.06, COL.stone, COL.stoneTop);
+    panel(-PORTAL_HALF, PORTAL_HALF, head - 0.05, head + 0.05, STONE_OUT + 0.005, COL.stoneGroove);
+    // Thin stone mullions dividing the glass bay between the piers into three.
+    for (const u of [-DOOR_HALF / 3, DOOR_HALF / 3]) slab(u - 0.09, u + 0.09, SPANDREL_TOP, head, 0, STONE_OUT * 0.75, COL.stone, COL.stoneTop);
     // Plinth strip at the foot of the piers.
-    for (const s of [-1, 1]) slab(s < 0 ? -PORTAL_HALF - 0.05 : DOOR_HALF - 0.05, s < 0 ? -DOOR_HALF + 0.05 : PORTAL_HALF + 0.05, 0, 0.35, 0, STONE_OUT + 0.06, COL.joint);
+    for (const s of [-1, 1]) slab(s < 0 ? -PORTAL_HALF - 0.05 : DOOR_HALF - 0.05, s < 0 ? -DOOR_HALF + 0.05 : PORTAL_HALF + 0.05, 0, 0.35, 0, STONE_OUT + 0.06, COL.stoneGroove);
 
-    // Round emblem on the lintel: a pale ring round a bright disc.
-    const ey = PORTAL_TOP - LINTEL_H / 2 - 0.03;
-    disc(mb, P, ey, STONE_OUT + 0.01, 0.44, COL.emblemRing, OUT);
-    disc(mb, P, ey, STONE_OUT + 0.02, 0.32, COL.emblem, OUT);
+    // Ruyi-cloud emblem on the head block: a round head with two side lobes and a short stem.
+    const ey = head + LINTEL_H * 0.55;
+    const eo = STONE_OUT + 0.01;
+    disc(mb, P, 0, ey, eo, 0.62, COL.emblemRing, OUT);
+    disc(mb, P, -0.62, ey - 0.12, eo, 0.42, COL.emblemRing, OUT);
+    disc(mb, P, 0.62, ey - 0.12, eo, 0.42, COL.emblemRing, OUT);
+    disc(mb, P, 0, ey, eo + 0.01, 0.5, COL.emblem, OUT);
+    disc(mb, P, -0.62, ey - 0.12, eo + 0.01, 0.3, COL.emblem, OUT);
+    disc(mb, P, 0.62, ey - 0.12, eo + 0.01, 0.3, COL.emblem, OUT);
+    slab(-0.09, 0.09, ey - 0.95, ey - 0.4, eo, eo + 0.03, COL.emblem);
 
     // Canopy over the doors: a thick metal fascia whose plan curves back to the wall at the
     // ends and whose underside dips there, a sloped top and a dark soffit.
@@ -153,10 +180,24 @@ function buildFace(mb: MeshBuilder, half: (y: number) => number, f: number, face
         quadToward(mb, P(u0, l0 + 0.04, f0), P(u1, l1 + 0.04, f1), P(u1, CANOPY_LOW + 0.04, wall), P(u0, CANOPY_LOW + 0.04, wall), DOWN, COL.canopyUnder);
     }
     // Downlights under the canopy.
-    for (const u of [-1.8, -0.6, 0.6, 1.8]) {
-        for (const o of [0.9, 1.6]) {
+    for (const u of [-2.4, -1.2, 0, 1.2, 2.4]) {
+        for (const o of [0.9, 1.8]) {
             quadToward(mb, P(u - 0.12, CANOPY_LOW + 0.02, o - 0.12), P(u + 0.12, CANOPY_LOW + 0.02, o - 0.12),
                 P(u + 0.12, CANOPY_LOW + 0.02, o + 0.12), P(u - 0.12, CANOPY_LOW + 0.02, o + 0.12), DOWN, COL.emblem);
+        }
+    }
+
+    // Flagpoles (bare white masts) and street lamps along the forecourt.
+    for (const s of [-1, 1]) {
+        for (const k of [0, 1]) {
+            const c = g(s * (FORECOURT_HALF + 4.6 + k * 1.6), 1.6 + k * 0.6, 0);
+            mb.prism(6, 0, 13, 0.1, 0.07, COL.pole, c[0], c[2]);
+            mb.prism(6, 13, 13.25, 0.16, 0.16, COL.pole, c[0], c[2]);
+        }
+        for (const o of [5.5, 10]) {
+            const c = g(s * (FORECOURT_HALF + 0.7), o, 0);
+            mb.prism(6, 0, 4.6, 0.09, 0.07, COL.lamp, c[0], c[2]);
+            mb.box(c[0], 4.7, c[2], 0.5, 0.22, 0.5, COL.lamp, yaw, COL.emblem);
         }
     }
 
@@ -168,15 +209,15 @@ function buildFace(mb: MeshBuilder, half: (y: number) => number, f: number, face
     }
 }
 
-/** Flat disc on the face (fan of quads), centred on u = 0 at height y. */
-function disc(mb: MeshBuilder, P: (u: number, y: number, out: number) => V3, y: number, out: number, r: number, color: Color, n: V3): void {
+/** Flat disc on the face (fan of quads), centred at (u, y). */
+function disc(mb: MeshBuilder, P: (u: number, y: number, out: number) => V3, u: number, y: number, out: number, r: number, color: Color, n: V3): void {
     const k = 16;
-    const c = P(0, y, out);
+    const c = P(u, y, out);
     for (let i = 0; i < k; i++) {
         const a0 = (i / k) * Math.PI * 2;
         const a1 = ((i + 1) / k) * Math.PI * 2;
-        const p0 = P(Math.cos(a0) * r, y + Math.sin(a0) * r, out);
-        const p1 = P(Math.cos(a1) * r, y + Math.sin(a1) * r, out);
+        const p0 = P(u + Math.cos(a0) * r, y + Math.sin(a0) * r, out);
+        const p1 = P(u + Math.cos(a1) * r, y + Math.sin(a1) * r, out);
         quadToward(mb, c, p0, p1, p1, n, color);
     }
 }

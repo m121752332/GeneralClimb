@@ -10,28 +10,33 @@
  */
 
 /** Door opening: half width and height of the glass door wall. */
-export const DOOR_HALF = 2.0;
+export const DOOR_HALF = 2.4;
 export const DOOR_TOP = 2.7;
 /** Sign band over the doors (light panel). */
 export const SIGN_TOP = 3.15;
-/** Stone portal: piers from DOOR_HALF out to PORTAL_HALF, up to PORTAL_TOP, with a lintel. */
-export const PORTAL_HALF = 3.1;
-export const PORTAL_TOP = 10.6;
-export const LINTEL_H = 1.1;
+/**
+ * Stone portal: a pier each side from DOOR_HALF out to PORTAL_HALF rising several floors to
+ * PORTAL_TOP, a stone spandrel from the sign band up to SPANDREL_TOP, glass between the piers
+ * above that, and a stone head block (LINTEL_H tall) carrying the emblem at the top.
+ */
+export const PORTAL_HALF = 3.7;
+export const PORTAL_TOP = 17.5;
+export const LINTEL_H = 2.4;
+export const SPANDREL_TOP = 5.4;
 /** How far the stone stands out of the face (in front of the level's glass and pilasters). */
 export const STONE_OUT = 0.4;
 /** Canopy: half width, how far its front sticks out, underside and top at the middle. */
-export const CANOPY_HALF = 3.5;
-export const CANOPY_OUT = 2.2;
+export const CANOPY_HALF = 4.3;
+export const CANOPY_OUT = 2.9;
 export const CANOPY_LOW = 3.45;
-export const CANOPY_TOP = 3.95;
+export const CANOPY_TOP = 4.45;
 /** The canopy's ends wrap down this much (the fascia is deeper at the ends). */
-export const CANOPY_DROOP = 0.45;
+export const CANOPY_DROOP = 1.1;
 /** Paved forecourt in front of each entrance and the plaza paving round the base. */
 export const FORECOURT_HALF = 4.2;
 export const FORECOURT_LEN = 11;
 export const PAVING_MARGIN = 10;
-export const TILE = 2;
+export const TILE = 3;
 
 /** 0..1 across the canopy: 0 in the middle, 1 at the ends. */
 function across(u: number): number {
@@ -45,12 +50,12 @@ function across(u: number): number {
 export function canopyFront(u: number): number {
     const a = Math.abs(u) / CANOPY_HALF;
     if (a >= 1) return 0;
-    return CANOPY_OUT * Math.sqrt(1 - Math.pow(a, 6));
+    return CANOPY_OUT * Math.sqrt(1 - Math.pow(a, 3));
 }
 
 /** Underside of the fascia at `u`: lowest at the ends, where it wraps down. */
 export function canopyLow(u: number): number {
-    return CANOPY_LOW - CANOPY_DROOP * Math.pow(across(u), 3);
+    return CANOPY_LOW - CANOPY_DROOP * Math.pow(across(u), 2.5);
 }
 
 function smooth(t: number): number {
@@ -90,8 +95,9 @@ export function entranceCovers(u: number, colHalf: number, y0: number, y1: numbe
     if (a - colHalf < CANOPY_HALF && y0 < CANOPY_TOP) return true;
     // A pier hides the window if it covers the middle of the column.
     if (a > DOOR_HALF - colHalf * 0.4 && a < PORTAL_HALF + colHalf * 0.4) return true;
-    // Lintel band.
-    return a - colHalf < PORTAL_HALF && y1 > PORTAL_TOP - LINTEL_H;
+    // Stone spandrel over the canopy and the head block at the top.
+    const inPortal = a - colHalf < PORTAL_HALF;
+    return inPortal && (y0 < SPANDREL_TOP || y1 > PORTAL_TOP - LINTEL_H);
 }
 
 /** Face position (world units from the middle) of perimeter coordinate `s` on a face of half width `half`. */

@@ -7,7 +7,7 @@ import {
 
 test('canopy outline: full depth in the middle, curving back to the wall at the ends', () => {
     assert.equal(canopyFront(0), CANOPY_OUT);
-    assert.ok(canopyFront(CANOPY_HALF * 0.5) > CANOPY_OUT * 0.95);
+    assert.ok(canopyFront(CANOPY_HALF * 0.5) > CANOPY_OUT * 0.9);
     assert.ok(canopyFront(CANOPY_HALF * 0.97) < canopyFront(CANOPY_HALF * 0.8));
     assert.equal(canopyFront(CANOPY_HALF), 0);
     assert.equal(canopyFront(-CANOPY_HALF - 1), 0);
