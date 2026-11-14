@@ -782,7 +782,9 @@ export class Climb extends Component {
         // Effects layer (screen space). Warning phase gives a softer hint of what is coming.
         const fx = this.fxG;
         fx.clear();
-        const kind = s.state === 'warning' || s.state === 'active' ? s.kind : null;
+        // A dive that outlasts the event (it is still deadly) keeps the eagle icon up.
+        const diving = sim.eagleDive !== null && sim.eagleDive.t < 1 && sim.phase === 'climbing';
+        const kind = diving ? 'eagle' : s.state === 'warning' || s.state === 'active' ? s.kind : null;
         const strength = s.state === 'active' ? 1 : s.state === 'warning' ? 0.35 : 0;
         if (kind === 'rain') {
             fx.fillColor = new Color(0, 0, 20, Math.round(100 * strength));
