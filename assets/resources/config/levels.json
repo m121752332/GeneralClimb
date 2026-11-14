@@ -38,8 +38,8 @@
       ]
     },
     "eagle": {
-      "everySec": 600,
-      "firstSec": 300,
+      "everySec": 120,
+      "firstSec": 90,
       "durationSec": [
         3,
         3
