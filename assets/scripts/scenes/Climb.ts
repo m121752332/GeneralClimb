@@ -841,25 +841,23 @@ export class Climb extends Component {
             }
             tower.camera.convertToUINode(eyes, this.node, this.eyeUi);
             const ex = this.eyeUi.x, ey = this.eyeUi.y;
-            const r = (glare ? 26 : 18) + 8 * pulse;
-            for (const [k, a] of [[2.4, 50], [1.6, 90], [1, 200]] as const) {
+            // Kept small (rays and a thin halo) so the 3D head and its red eyes stay visible.
+            const r = (glare ? 11 : 8) + 4 * pulse;
+            for (const [k, a] of [[1.8, 45], [1.25, 90]] as const) {
                 fx.fillColor = new Color(255, 40, 20, a);
                 fx.circle(ex, ey, r * k);
                 fx.fill();
             }
             fx.strokeColor = new Color(255, 120, 60, 230);
-            fx.lineWidth = 4;
+            fx.lineWidth = 3;
             const spin = this.elapsed * 3;
             for (let i = 0; i < 8; i++) {
                 const a = spin + (i * Math.PI) / 4;
-                const len = r * (i % 2 === 0 ? 3.2 : 2.2);
-                fx.moveTo(ex + Math.cos(a) * r * 1.1, ey + Math.sin(a) * r * 1.1);
+                const len = r * (i % 2 === 0 ? 4 : 2.8);
+                fx.moveTo(ex + Math.cos(a) * r * 1.6, ey + Math.sin(a) * r * 1.6);
                 fx.lineTo(ex + Math.cos(a) * len, ey + Math.sin(a) * len);
             }
             fx.stroke();
-            fx.fillColor = new Color(255, 245, 220, 255);
-            fx.circle(ex, ey, r * 0.35);
-            fx.fill();
         }
         // Edge vignette (GDD 6).
         if (sim.tier !== 'safe' || this.mode === 'falling') {
