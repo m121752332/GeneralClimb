@@ -802,6 +802,9 @@ export class Climb extends Component {
             lift,
         });
         if (this.mode === 'intro') tower.applyPushIn(this.introSec);
+        // Sky and clouds follow the weather: grey overcast while it rains, faster clouds in a gale.
+        const weather = (kind: 'wind' | 'rain'): number => (s.kind !== kind ? 0 : s.state === 'active' ? 1 : s.state === 'warning' ? 0.35 : 0);
+        tower.updateAtmosphere(dt, weather('rain'), weather('wind'));
         tower.camera.convertToUINode(tower.headWorld(this.tmpV), this.node, this.playerUi);
         this.nameTag.node.setPosition(this.playerUi.x, this.playerUi.y + 14);
         this.nameTag.node.active = tower.climberInView && !ending && this.mode !== 'intro';

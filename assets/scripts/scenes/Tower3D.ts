@@ -15,6 +15,8 @@ import { pushInPose } from '../core/Cutscene';
 import { canopyClearance, faceU } from '../climb/EntranceShape';
 import { buildEntrances } from './Entrance';
 import { Eagle3D } from './Eagle3D';
+import { buildCity, buildTerrain, buildWater } from './Basin3D';
+import { Atmosphere3D, DOME_RADIUS } from './Atmosphere3D';
 
 /**
  * 3D view of the climb (ADR-10): a low-poly Taipei 101 built in code, the current level's
@@ -69,8 +71,8 @@ const DRAG_ORBIT = 0.008;
 /** After the player lets go of the view, wait this long, then swing back to the climber. */
 const RETURN_DELAY_SEC = 1.5;
 const RETURN_RATE = 3;
-/** Nearest city block distance from the tower axis; the orbit radius is at most ~33. */
-const CITY_MIN = 60;
+/** Half width of the paved plaza square; the basin's city plain (Basin3D) lies round it. */
+const PLAZA_HALF = 80;
 /** Practice: the real 101 stands on the skyline this far away, scaled down to this share. */
 const SKYLINE_101_DIST = 520;
 const SKYLINE_101_SCALE = 0.8;
@@ -216,6 +218,8 @@ export class Tower3D {
     private gridMesh: Mesh | null = null;
     private crowd: WindowCrowd | null = null;
     private eagle: Eagle3D | null = null;
+    private atmosphere: Atmosphere3D | null = null;
+    private readonly basinMeshes: Mesh[] = [];
     private player!: Node;
     private body!: Node;
     private cape: Node | null = null;
@@ -266,7 +270,8 @@ export class Tower3D {
         cam.fovAxis = Camera.FOVAxis.HORIZONTAL;
         cam.fov = FOV;
         cam.near = 0.3;
-        cam.far = 1500;
+        // Past the sky dome (Atmosphere3D), which is centred on the camera.
+        cam.far = DOME_RADIUS + 500;
         cam.priority = 0;
         cam.clearFlags = Camera.ClearFlag.SOLID_COLOR;
         cam.clearColor = SKY;
@@ -278,6 +283,7 @@ export class Tower3D {
     async init(): Promise<void> {
         this.material = await loadMaterial();
         this.addMesh('Scenery', this.houseFloors > 0 ? this.buildHouse() : this.buildScenery());
+        this.buildBasin();
         this.crowd = new WindowCrowd(this.root, this.sections, this.rowsPerFloor, this.crowdTuning, (name, mb, parent) => {
             const { node, mesh } = this.addMesh(name, mb, parent);
             return { node, destroy: () => mesh.destroy() };
@@ -290,6 +296,8 @@ export class Tower3D {
     }
 
     destroy(): void {
+        this.atmosphere?.destroy();
+        for (const m of this.basinMeshes) m.destroy();
         this.crowd?.clear();
         this.eagle?.destroy();
         this.gridMesh?.destroy();
@@ -318,7 +326,7 @@ export class Tower3D {
         const rpf = this.rowsPerFloor;
 
         // Plaza, its stone paving and the grand entrance in the middle of each face.
-        mb.quad([-400, 0, 400], [400, 0, 400], [400, 0, -400], [-400, 0, -400], COL.plaza, true);
+        mb.quad([-PLAZA_HALF, 0, PLAZA_HALF], [PLAZA_HALF, 0, PLAZA_HALF], [PLAZA_HALF, 0, -PLAZA_HALF], [-PLAZA_HALF, 0, -PLAZA_HALF], COL.plaza, true);
         buildEntrances(mb, (y) => halfAt(S, y), faces);
 
         for (let i = 0; i < S.length; i++) {
@@ -380,7 +388,6 @@ export class Tower3D {
         mb.prism(16, top - 0.3, top, 1.6, 1.6, COL.ledge);
         mb.prism(8, top, top + SPIRE_TIP, SPIRE_HALF[1], 0.04, COL.spire);
 
-        this.addCity(mb);
         return mb;
     }
 
@@ -396,7 +403,7 @@ export class Tower3D {
         const faces = 4;
         const h = HOUSE_HALF;
         const top = S[0].y1;
-        mb.quad([-400, 0, 400], [400, 0, 400], [400, 0, -400], [-400, 0, -400], COL.plaza, true);
+        mb.quad([-PLAZA_HALF, 0, PLAZA_HALF], [PLAZA_HALF, 0, PLAZA_HALF], [PLAZA_HALF, 0, -PLAZA_HALF], [-PLAZA_HALF, 0, -PLAZA_HALF], COL.plaza, true);
         const lawn = h + 7;
         mb.quad([-lawn, 0.01, lawn], [lawn, 0.01, lawn], [lawn, 0.01, -lawn], [-lawn, 0.01, -lawn], COL.lawn, true);
         const m = h + 3;
@@ -414,8 +421,6 @@ export class Tower3D {
         mb.box(-h * 0.45, top + 0.24 + 0.95, -h * 0.35 + 1.52, 1, 1.9, 0.05, COL.door);
         for (const [x, z] of [[1.6, -2.2], [3.2, -2.2], [1.6, -3.6], [3.2, -3.6]]) mb.box(x, top + 0.74, z, 0.12, 1, 0.12, COL.louvre);
         mb.prism(12, top + 1.24, top + 2.9, 1.05, 1.05, COL.tank, 2.4, -2.9);
-
-        this.addCity(mb);
 
         // The 101 on the skyline: the same sections, crown and spire, as simple tapered blocks.
         const k = SKYLINE_101_SCALE;
@@ -435,25 +440,26 @@ export class Tower3D {
     }
 
     /**
-     * City blocks round the plaza (fixed layout, so every run looks the same). They start well
-     * outside the camera's orbit (CITY_MIN) so the camera never ends up inside one.
+     * The Taipei basin round the plaza (ADR-11): city plain, rivers and parks, the city blocks,
+     * the ring of mountains, then the sky dome and drifting clouds. Fixed layout, so every run
+     * looks the same. Practice keeps the skyline 101's footprint clear of blocks.
      */
-    private addCity(mb: MeshBuilder): void {
-        let seed = 101;
-        const rnd = (): number => {
-            seed = (seed * 16807) % 2147483647;
-            return seed / 2147483647;
-        };
-        const tones = [hex('#c9c3b8'), hex('#a9b3b8'), hex('#d8cfc0'), hex('#8f9ca3'), hex('#b7c4c9'), hex('#9aa89a')];
-        for (let i = 0; i < 260; i++) {
-            const a = rnd() * Math.PI * 2;
-            const r = CITY_MIN + Math.pow(rnd(), 0.7) * 300;
-            const near = r < CITY_MIN + 40;
-            const w = 6 + rnd() * 14;
-            const d = 6 + rnd() * 14;
-            const h = near ? 4 + rnd() * 18 : 6 + rnd() * rnd() * 60;
-            mb.box(Math.sin(a) * r, h / 2, Math.cos(a) * r, w, h, d, tones[i % tones.length], rnd() * 0.4, hex('#e4e0d8'));
-        }
+    private buildBasin(): void {
+        // Practice: a clear sight line from the house to the 101 on the skyline.
+        const keep: [number, number, number][] = [];
+        if (this.houseFloors > 0) for (let z = 60; z <= SKYLINE_101_DIST; z += 30) keep.push([0, -z, z < SKYLINE_101_DIST ? 16 : 22]);
+        const parts = [buildTerrain(), buildWater(), ...buildCity(keep)];
+        parts.forEach((mb, i) => this.basinMeshes.push(this.addMesh(`Basin${i}`, mb).mesh));
+        const top = summitY(this.rowsPerFloor, this.ladderRows);
+        this.atmosphere = new Atmosphere3D(this.root, this.camera, top, (name, mb, parent) => this.addMesh(name, mb, parent));
+    }
+
+    /**
+     * Sky and clouds, once the camera is placed for the frame (climb, push-in or ending).
+     * `gloom` 0..1 greys the sky for rain; `wind` 0..1 speeds up the clouds.
+     */
+    updateAtmosphere(dt: number, gloom: number, wind: number): void {
+        this.atmosphere?.update(dt, gloom, wind);
     }
 
     /** Flat square ring at height y between half widths outer and inner. */
