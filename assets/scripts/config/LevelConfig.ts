@@ -37,7 +37,11 @@ export interface EventsConfig {
     /** pushEverySec: moving in a gust pushes the climber one cell outward this often. */
     wind: TimedEventConfig & { pushEverySec: number };
     rain: TimedEventConfig;
-    eagle: TimedEventConfig & { spotSec: number };
+    /**
+     * spotSec: moving this long while it watches makes the eagle dive; diveSec: how long the
+     * dive takes to reach the aimed cell; hitCols / hitRows: how close counts as a hit there.
+     */
+    eagle: TimedEventConfig & { spotSec: number; diveSec: number; hitCols: number; hitRows: number };
 }
 
 export interface WidthConfig {
@@ -253,7 +257,12 @@ function checkEvents(c: Checker, root: Obj): void {
         c.num(ev, 'everySec', path, { gt: 0 });
         c.num(ev, 'firstSec', path, { min: 0 });
         c.pair(ev, 'durationSec', path, { gt: 0 });
-        if (kind === 'eagle') c.num(ev, 'spotSec', path, { gt: 0 });
+        if (kind === 'eagle') {
+            c.num(ev, 'spotSec', path, { gt: 0 });
+            c.num(ev, 'diveSec', path, { gt: 0 });
+            c.num(ev, 'hitCols', path, { min: 0, int: true });
+            c.num(ev, 'hitRows', path, { min: 0, int: true });
+        }
         if (kind === 'wind') c.num(ev, 'pushEverySec', path, { gt: 0 });
     }
 }

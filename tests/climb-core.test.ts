@@ -223,7 +223,7 @@ test('rain: moving longer than rainGraceSec falls; gripping is safe', () => {
     assert.equal(sim.fallCause, 'rain');
 });
 
-test('eagle: stopping before spotSec is safe, moving through it falls', () => {
+test('eagle: stopping before spotSec is safe, moving through it makes it dive and knock the climber off', () => {
     const c = cfg();
     const sim = new ClimbSim(c, 0, 7);
     run(sim, 300 + c.events.warningSec + 0.05);
@@ -232,8 +232,43 @@ test('eagle: stopping before spotSec is safe, moving through it falls', () => {
     run(sim, 0.5);
     assert.equal(sim.phase, 'climbing');
     assert.equal(sim.eagleSpotSec, 0);
-    run(sim, c.events.eagle.spotSec + 0.1, UP);
+    assert.equal(sim.eagleDive, null);
+    run(sim, c.events.eagle.spotSec + 0.05, UP);
+    assert.equal(sim.phase, 'climbing', 'spotted: the eagle dives first');
+    const dive = sim.eagleDive;
+    assert.ok(dive, 'diving');
+    assert.equal(dive.col, sim.col, 'aimed at the climber');
+    // Freezing now is too late: the dive is committed.
+    run(sim, c.events.eagle.diveSec + 0.05);
     assert.equal(sim.phase, 'fallen');
+    assert.equal(sim.fallCause, 'eagle');
+    assert.equal(sim.eagleDive?.t, 1);
+});
+
+test('eagle dive: a graze (next column) still hits, two columns away is a miss', () => {
+    const c = cfg();
+    const { hitCols, hitRows, diveSec } = c.events.eagle;
+    const at = (dc: number, dr = 0): ClimbSim => {
+        const sim = new ClimbSim(c, 0, 7);
+        sim.row = 20;
+        sim.eagleDive = { t: 0, col: wrapCol(sim.wall, sim.col - dc), row: 20 - dr };
+        run(sim, diveSec + 0.05);
+        return sim;
+    };
+    assert.equal(at(0).fallCause, 'eagle');
+    assert.equal(at(hitCols).fallCause, 'eagle', 'graze');
+    assert.equal(at(-hitCols).fallCause, 'eagle', 'graze on the other side');
+    assert.equal(at(0, hitRows).fallCause, 'eagle');
+    const miss = at(hitCols + 1);
+    assert.equal(miss.phase, 'climbing');
+    assert.equal(miss.eagleDive, null);
+    assert.ok(miss.eagleRecoverSec > 0, 'pulls up before it can spot again');
+    assert.equal(at(0, hitRows + 1).phase, 'climbing');
+    // Round the corner of the ring: column 0 and the last column are neighbours.
+    const sim = new ClimbSim(c, 0, 7);
+    sim.col = 0;
+    sim.eagleDive = { t: 0, col: sim.wall.ring - 1, row: 0 };
+    run(sim, diveSec + 0.05);
     assert.equal(sim.fallCause, 'eagle');
 });
 

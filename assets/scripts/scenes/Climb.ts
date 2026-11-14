@@ -92,7 +92,7 @@ const EVENT_LABEL = { wind: '風', rain: '雨', eagle: '鷹' } as const;
 const PRACTICE_TIP = {
     wind: '強風來了！放開方向鍵抓牢\n亂動會被吹向轉角（危險區）',
     rain: '下雨了！手會滑\n完全停下，等雨停再爬',
-    eagle: '老鷹來了！不要動\n等牠飛走就安全',
+    eagle: '老鷹來了！不要動\n亂動會被牠俯衝撲下去',
 } as const;
 /** Practice tip sits under the HUD band. */
 const TIP_TOP = 250;
@@ -315,7 +315,7 @@ export class Climb extends Component {
             this.hideOverlay();
         }
         if (this.mode === 'play') {
-            const before = { stepping: sim.stepping, stepT: sim.stepT, gripping: sim.gripping, event: sim.scheduler.state };
+            const before = { stepping: sim.stepping, stepT: sim.stepT, gripping: sim.gripping, event: sim.scheduler.state, dive: sim.eagleDive !== null };
             sim.update(dt, dir);
             this.playSimSounds(sim, before);
             if (sim.phase === 'fallen') this.beginFall();
@@ -331,11 +331,12 @@ export class Climb extends Component {
     }
 
     /** Effects for what changed during this frame's update (GDD §9 sounds, M4). */
-    private playSimSounds(sim: ClimbSim, before: { stepping: boolean; stepT: number; gripping: boolean; event: string }): void {
+    private playSimSounds(sim: ClimbSim, before: { stepping: boolean; stepT: number; gripping: boolean; event: string; dive: boolean }): void {
         const sfx = sound();
         // A new cell: starting from rest, or the next step began while holding the key (stepT wrapped).
         if (sim.stepping && (!before.stepping || sim.stepT < before.stepT)) sfx.play('step');
         else if (sim.gripping && !before.gripping) sfx.play('grip');
+        if (sim.eagleDive && !before.dive) sfx.play('eagleDive');
         const sched = sim.scheduler;
         if (sched.state === 'warning' && before.event !== 'warning' && sched.kind) {
             sfx.play(sched.kind === 'wind' ? 'warnWind' : sched.kind === 'rain' ? 'warnRain' : 'warnEagle');
@@ -781,7 +782,9 @@ export class Climb extends Component {
         // Effects layer (screen space). Warning phase gives a softer hint of what is coming.
         const fx = this.fxG;
         fx.clear();
-        const kind = s.state === 'warning' || s.state === 'active' ? s.kind : null;
+        // A dive that outlasts the event (it is still deadly) keeps the eagle icon up.
+        const diving = sim.eagleDive !== null && sim.eagleDive.t < 1 && sim.phase === 'climbing';
+        const kind = diving ? 'eagle' : s.state === 'warning' || s.state === 'active' ? s.kind : null;
         const strength = s.state === 'active' ? 1 : s.state === 'warning' ? 0.35 : 0;
         if (kind === 'rain') {
             fx.fillColor = new Color(0, 0, 20, Math.round(100 * strength));
@@ -822,30 +825,8 @@ export class Climb extends Component {
                 }
             }
             fx.stroke();
-        } else if (kind === 'eagle') {
-            const ey = this.playerUi.y + 170;
-            if (s.state === 'warning') {
-                // Shadow sweeping over the glass.
-                const t = 1 - s.left / this.cfg!.events.warningSec;
-                fx.fillColor = new Color(0, 0, 0, 60);
-                fx.ellipse(right + 80 - t * (vs.width + 160), ey - 120, 70, 18);
-                fx.fill();
-            } else {
-                const t = 1 - s.left / s.activeTotal;
-                const ex = left - 60 + t * (vs.width + 120);
-                const flap = Math.sin(this.elapsed * 18) * 10;
-                fx.fillColor = C.eagle;
-                fx.moveTo(ex - 44, ey + flap);
-                fx.lineTo(ex, ey - 6);
-                fx.lineTo(ex + 44, ey + flap);
-                fx.lineTo(ex, ey + 4);
-                fx.close();
-                fx.fill();
-                fx.fillColor = new Color(0, 0, 0, 50);
-                fx.ellipse(ex, ey - 140, 50, 12);
-                fx.fill();
-            }
         }
+        // The eagle itself is 3D (Eagle3D in Tower3D): circling, diving at the climber, pulling away.
         // Edge vignette (GDD 6).
         if (sim.tier !== 'safe' || this.mode === 'falling') {
             const blink = sim.tier === 'crisis' ? 0.5 + 0.5 * Math.sin(this.elapsed * 12) : 1;
