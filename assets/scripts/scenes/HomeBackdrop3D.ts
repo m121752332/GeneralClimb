@@ -31,13 +31,13 @@ export class HomeBackdrop3D extends Component {
     private readonly look = new Vec3();
 
     /** Adds the backdrop behind everything else under the Home canvas. */
-    static mount(canvas: Node): void {
+    static mount(canvas: Node): Node {
         const holder = makeNode('Backdrop3D', canvas);
         holder.setSiblingIndex(0);
         const view = holder.addComponent(HomeBackdrop3D);
         view.flat = buildBackdrop(canvas);
         view.flat.setSiblingIndex(0);
-        buildCaption(canvas);
+        return buildCaption(canvas);
     }
 
     start(): void {
@@ -103,9 +103,9 @@ export class HomeBackdrop3D extends Component {
         const [x, y, z] = homeEye(t);
         const n = this.tower!.camera.node;
         n.setPosition(x, y, z);
-        // Landscape: turn so the tower stands left of the menu.
+        // Turn so the tower stands right of the left menu column.
         const size = view.getVisibleSize();
-        const a = -homeYawShift(size.width / Math.max(1, size.height));
+        const a = homeYawShift(size.width / Math.max(1, size.height));
         const dx = LOOK.x - x, dz = LOOK.z - z;
         const c = Math.cos(a), s = Math.sin(a);
         this.look.set(x + dx * c + dz * s, LOOK.y, z - dx * s + dz * c);
@@ -168,9 +168,12 @@ export class HomeBackdrop3D extends Component {
     }
 }
 
-/** Bottom caption: a short red rule over the place name, pinned to the visible bottom edge. */
-function buildCaption(canvas: Node): void {
-    const bar = makeNode('Caption', canvas, 720, 56);
+/**
+ * Bottom caption: a short red rule over the place name, pinned to the visible bottom edge.
+ * Returned so Home can move it to the bottom-right corner on landscape screens.
+ */
+function buildCaption(canvas: Node): Node {
+    const bar = makeNode('Caption', canvas, 600, 56);
     const w = bar.addComponent(Widget);
     w.isAlignBottom = true;
     w.bottom = 14;
@@ -179,4 +182,5 @@ function buildCaption(canvas: Node): void {
     g.rect(-36, -1.5, 72, 3);
     g.fill();
     makeLabel(bar, CAPTION, 19, hex('#f6dccf', 230), { y: -8, outline: hex('#2a1a2e', 200), outlineWidth: 2 });
+    return bar;
 }

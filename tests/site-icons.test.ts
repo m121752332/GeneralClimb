@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { ICON_DIR, ICON_FILES, injectIconLinks } from '../tools/site-icons.mjs';
+import { ICON_DIR, ICON_FILES, NO_SCROLL_STYLE, injectIconLinks } from '../tools/site-icons.mjs';
 
 const html = '<html><head>\n  <title>x</title>\n</head><body></body></html>';
 
@@ -27,7 +27,12 @@ test('icon files exist in the build template and in site/', () => {
     }
 });
 
-test('committed site/index.html links the icons', () => {
+test('committed site/index.html links the icons and hides page scrollbars', () => {
     const index = readFileSync(new URL('../site/index.html', import.meta.url), 'utf8');
     assert.equal(injectIconLinks(index), index);
+    assert.ok(index.includes(NO_SCROLL_STYLE));
+});
+
+test('injectIconLinks adds the no-scrollbar style', () => {
+    assert.ok(injectIconLinks(html).includes(NO_SCROLL_STYLE));
 });

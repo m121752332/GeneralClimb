@@ -449,17 +449,20 @@ export const HOME_EYE: XYZ = [195, 120, 45];
 export const HOME_LOOK: XYZ = [0, 150, 0];
 /** Vertical field of view (degrees), the same framing on any aspect ratio. */
 export const HOME_FOV = 64;
-/** On landscape screens the tower stands this far left of centre (share of the half width), clear of the menu. */
+/** On landscape screens the tower stands this far right of centre (share of the half width), clear of the left menu. */
 export const HOME_WIDE_SHIFT = 0.42;
+/** On portrait screens the tower stands this far right of centre, beside the left menu column. */
+export const HOME_TALL_SHIFT = 0.5;
 
 /**
- * Yaw (radians, turning the camera left of the tower) that puts the tower HOME_WIDE_SHIFT left of centre
- * on a landscape screen of aspect `w / h`; 0 on portrait screens.
+ * Yaw (radians) that puts the tower right of centre on a screen of aspect `w / h`: HOME_TALL_SHIFT of the
+ * half width on portrait screens, easing to HOME_WIDE_SHIFT on landscape ones. Positive turns the camera
+ * left of the tower, so the tower moves right on screen.
  */
 export function homeYawShift(aspect: number): number {
-    if (aspect <= 1) return 0;
     const tanH = Math.tan((HOME_FOV / 2) * (Math.PI / 180)) * aspect;
-    return Math.atan(tanH * HOME_WIDE_SHIFT * smoothstep(1, 1.4, aspect));
+    const share = HOME_TALL_SHIFT + (HOME_WIDE_SHIFT - HOME_TALL_SHIFT) * smoothstep(1, 1.4, aspect);
+    return Math.atan(tanH * share);
 }
 /** The camera drifts round the axis by up to this much (radians) over HOME_SWAY_SEC. */
 export const HOME_SWAY = 0.035;
