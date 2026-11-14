@@ -9,6 +9,7 @@ import { GameSession } from '../core/GameSession';
 import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
 import { applyScreenFit } from '../core/ScreenFit';
+import { PUSH_IN_SEC, SKIP_GRACE_SEC } from '../core/Cutscene';
 import {
     ClimbSim, Dir, FALL_TEXT, NO_DIR, dirFromKeys, dirFromStick, formatClimbTime, randomSeed,
 } from '../climb/ClimbCore';
@@ -74,7 +75,7 @@ function alpha(c: Color, a: number): Color {
     return new Color(c.r, c.g, c.b, a);
 }
 
-type Mode = 'loading' | 'ready' | 'play' | 'paused' | 'transition' | 'falling' | 'fallen' | 'ending' | 'cleared' | 'error';
+type Mode = 'loading' | 'intro' | 'ready' | 'play' | 'paused' | 'transition' | 'falling' | 'fallen' | 'ending' | 'cleared' | 'error';
 
 /** "1–8F", or 尖塔 on the ladder levels. */
 function floorsText(l: { floors: string; floorFrom: number | null; floorTo: number | null }): string {
@@ -174,8 +175,12 @@ export class Climb extends Component {
     private endSec = 0;
     /** The fall has hit the ground (plays the landing thud once). */
     private landed = false;
+    /** Seconds into the start-game push-in (mode 'intro'). */
+    private introSec = 0;
+    private skipLabel!: Label;
 
     start(): void {
+        (globalThis as { __GC_SCENE?: string }).__GC_SCENE = 'Climb';
         applyScreenFit();
         this.buildNodes();
         this.showOverlay('載入中…');
@@ -270,6 +275,30 @@ export class Climb extends Component {
         }
         const hint = l.floorFrom === null ? '爬梯只能上下，強風時抓牢' : '可繞到其他面，轉角是危險區';
         this.showOverlay(`第 ${l.id} 關 ${l.name}\n${floorsText(l)}\n\n方向鍵 / WASD 或拖曳下半部攀爬\n放開 = 抓牢\n拖曳上半部 / Q E 旋轉視角\n${hint}`);
+        if (GameSession.pushIn) {
+            // GDD §7: coming from Home's start button, the camera pushes in to the base first.
+            // Only once: a retry after a fall starts straight away.
+            GameSession.pushIn = false;
+            this.mode = 'intro';
+            this.introSec = 0;
+            this.hideOverlay();
+            this.skipLabel.node.active = true;
+        }
+    }
+
+    /** End the push-in (finished or skipped) and show the level card. */
+    private endIntro(): void {
+        if (this.mode !== 'intro') return;
+        this.introSec = PUSH_IN_SEC;
+        this.mode = 'ready';
+        this.skipLabel.node.active = false;
+        this.overlayLabel.node.active = true;
+    }
+
+    private trySkipIntro(): boolean {
+        if (this.mode !== 'intro') return false;
+        if (this.introSec >= SKIP_GRACE_SEC) this.endIntro();
+        return true;
     }
 
     update(dt: number): void {
@@ -278,7 +307,10 @@ export class Climb extends Component {
         if (!sim || !this.tower) return;
         const dir = this.currentDir();
 
-        if (this.mode === 'ready' && (dir.dx !== 0 || dir.dy !== 0)) {
+        if (this.mode === 'intro') {
+            this.introSec += dt;
+            if (this.introSec >= PUSH_IN_SEC) this.endIntro();
+        } else if (this.mode === 'ready' && (dir.dx !== 0 || dir.dy !== 0)) {
             this.mode = 'play';
             this.hideOverlay();
         }
@@ -452,6 +484,7 @@ export class Climb extends Component {
     }
 
     private onKeyDown(e: EventKeyboard): void {
+        if (this.trySkipIntro()) return;
         if (this.setKey(e.keyCode, true)) return;
         if (e.keyCode === KeyCode.ESCAPE) this.togglePause();
         else if (e.keyCode === KeyCode.KEY_X && this.canExit()) this.exitToHome();
@@ -494,6 +527,7 @@ export class Climb extends Component {
     /** Mouse: a click is a tap; a drag (left button) turns the view round the tower. */
     private onMouseDown(e: EventMouse): void {
         if (this.fromTouch() || e.getButton() !== EventMouse.BUTTON_LEFT) return;
+        if (this.trySkipIntro()) return;
         this.mouseDown = true;
         this.mouseDragged = false;
         const p = e.getUILocation();
@@ -524,6 +558,7 @@ export class Climb extends Component {
 
     private onTouchStart(e: EventTouch): void {
         this.lastTouchMs = Date.now();
+        if (this.trySkipIntro()) return;
         const local = this.toLocal(e.getUILocation());
         const playing = this.mode === 'play' || this.mode === 'ready';
         const onButton = this.inPauseButton(local) || (this.canExit() && this.inExitButton(local))
@@ -681,6 +716,13 @@ export class Climb extends Component {
         tip.color = hex('#ffe2a0');
         tip.node.active = false;
         this.tipLabel = tip;
+        const skip = this.makeLabel('Skip', this.node, 26);
+        skip.string = '點擊或按任意鍵略過 ▶▶';
+        skip.enableOutline = true;
+        skip.outlineColor = new Color(0, 0, 0, 200);
+        skip.outlineWidth = 2;
+        skip.node.active = false;
+        this.skipLabel = skip;
     }
 
     private showOverlay(text: string): void {
@@ -724,9 +766,16 @@ export class Climb extends Component {
             shake,
             lift,
         });
+        if (this.mode === 'intro') tower.applyPushIn(this.introSec);
         tower.camera.convertToUINode(tower.headWorld(this.tmpV), this.node, this.playerUi);
         this.nameTag.node.setPosition(this.playerUi.x, this.playerUi.y + 14);
-        this.nameTag.node.active = tower.climberInView && !ending;
+        this.nameTag.node.active = tower.climberInView && !ending && this.mode !== 'intro';
+        // The push-in is a cutscene: no HUD until it ends.
+        this.hudG.node.active = this.mode !== 'intro';
+        if (this.mode === 'intro') {
+            this.skipLabel.node.setPosition(0, bottom + 110);
+            this.skipLabel.color = alpha(C.text, 150 + Math.round(105 * (0.5 + 0.5 * Math.sin(this.elapsed * 5))));
+        }
         this.nameTag.color = sim.tier === 'crisis' && Math.floor(this.elapsed * 10) % 2 === 0 ? C.riskCrisis : C.text;
 
         // Effects layer (screen space). Warning phase gives a softer hint of what is coming.

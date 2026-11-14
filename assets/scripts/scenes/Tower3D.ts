@@ -11,6 +11,7 @@ import { climberParts } from '../climb/ClimberShape';
 import { MeshBuilder, type V3 } from './MeshKit';
 import { WindowCrowd } from './WindowCrowd';
 import type { CrowdTuning } from '../climb/CrowdPlan';
+import { pushInPose } from '../core/Cutscene';
 
 /**
  * 3D view of the climb (ADR-10): a low-poly Taipei 101 built in code, the current level's
@@ -777,6 +778,17 @@ export class Tower3D {
         const cy = this.camY + 1.2 + opts.shake;
         this.camera.node.setPosition(Math.sin(this.camYaw) * dist, cy, Math.cos(this.camYaw) * dist);
         this.camera.node.lookAt(this.tmp.set(0, this.camY, 0));
+    }
+
+    /**
+     * Start-game cutscene (GDD §7): after `update` has placed the climber and the normal
+     * camera, move the camera back out along the same line so it glides in to the base.
+     */
+    applyPushIn(t: number): void {
+        const p = this.camera.node.position;
+        const pose = pushInPose({ x: p.x, y: p.y, z: p.z, lookY: this.camY }, t);
+        this.camera.node.setPosition(pose.x, pose.y, pose.z);
+        this.camera.node.lookAt(this.tmp.set(0, pose.lookY, 0));
     }
 
     /** Snaps the camera onto the climber (new run). */

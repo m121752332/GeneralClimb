@@ -51,6 +51,9 @@ try {
         return /開始遊戲/.test(text) && /levels\.json v\d+/.test(text) ? text : null;
     }, null, { timeout: TIMEOUT_MS });
     console.log(`Home labels: ${await home.jsonValue()}`);
+    const intro = await page.evaluate(() => globalThis.__GC_INTRO ?? 'missing');
+    console.log(`Opening: ${intro}`);
+    if (intro !== 'done') throw new Error(`Opening did not finish (${intro})`);
 } catch (e) {
     problems.push(e instanceof Error ? e.message : String(e));
 } finally {
