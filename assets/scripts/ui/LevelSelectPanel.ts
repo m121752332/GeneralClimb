@@ -14,8 +14,9 @@ function floorText(level: LevelDef): string {
 }
 
 /**
- * Grid of the 14 levels from levels.json. ADR-06: a fall always restarts at 1F, so normally
- * only level 1 can be started. Developer mode (金手指) opens every level, the spire included.
+ * Grid of the 14 levels from levels.json. Level 1 is always open; clearing a level opens the
+ * next (`unlocked`, core/Progress) until the summit ending resets them. Developer mode (金手指)
+ * opens every level, the spire included.
  */
 export function openLevelSelect(
     root: Node,
@@ -24,6 +25,8 @@ export function openLevelSelect(
     onStart: (levelIndex: number) => void,
     onLocked: (message: string) => void,
     onClose?: () => void,
+    unlocked = 0,
+    roundText = '',
 ): void {
     const rows = Math.ceil(cfg.levels.length / COLS);
     const gridW = COLS * CELL_W + (COLS - 1) * GAP;
@@ -32,7 +35,11 @@ export function openLevelSelect(
     const h = gridH + 200;
     const modal = openModal(root, devMode ? '選擇關卡 · GM' : '選擇關卡', w, h, onClose);
 
-    const hint = devMode ? '開發人員模式：可從任一樓層關開始（尖塔尚未開放）' : '墜落一律回 1F 重來，從第 1 關開始挑戰';
+    const hint = devMode
+        ? '開發人員模式：可從任一關開始（不計紀錄）'
+        : unlocked > 0
+            ? `${roundText} · 已解鎖到第 ${unlocked + 1} 關，墜落就全部重來`
+            : `${roundText ? `${roundText} · ` : ''}破一關開一關，墜落回 1F 重新上鎖`;
     makeLabel(modal.panel, hint, 22, devMode ? hex('#5fe39a') : hex('#c9d3ff'), { y: h / 2 - 122 });
 
     const top = h / 2 - 150;
@@ -41,7 +48,7 @@ export function openLevelSelect(
         const row = Math.floor(i / COLS);
         const x = -gridW / 2 + CELL_W / 2 + col * (CELL_W + GAP);
         const y = top - CELL_H / 2 - row * (CELL_H + GAP);
-        const access = levelAccess(level, i, devMode);
+        const access = levelAccess(level, i, devMode, unlocked);
         const open = access === 'open';
         const style = i === 0 ? STYLE.gold : open ? STYLE.secondary : STYLE.locked;
         const btn = makeButton(modal.panel, String(level.id), CELL_W, CELL_H, { ...style, fontSize: 46 }, () => {
@@ -49,7 +56,7 @@ export function openLevelSelect(
                 modal.close();
                 onStart(i);
             } else {
-                onLocked(access === 'spire' ? '尖塔關卡尚未開放' : '尚未解鎖：墜落一律從 1F 重來');
+                onLocked(access === 'spire' ? '尖塔關卡尚未開放' : `尚未解鎖：先破第 ${i} 關`);
             }
         }, x, y);
         btn.label.node.setPosition(0, 26);

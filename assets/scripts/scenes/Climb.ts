@@ -6,6 +6,8 @@ import type { LevelConfig } from '../config/LevelConfig';
 import { LevelLoader } from '../config/LevelLoader';
 import { effectiveSpeed, nextSpeed, speedText } from '../core/ClimbSpeed';
 import { GameSession } from '../core/GameSession';
+import { SPIRE_TIP_FLOOR, recordLocalBest } from '../core/LocalBest';
+import { afterFall, afterLevelCleared, afterSummit, updateProgress } from '../core/Progress';
 import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
 import { applyScreenFit } from '../core/ScreenFit';
@@ -257,6 +259,19 @@ export class Climb extends Component {
         return ok ? index : 0;
     }
 
+    /** Real runs only: practice and developer mode (金手指) record nothing. */
+    private get recording(): boolean {
+        return !this.practice && GameSession.devMode !== true;
+    }
+
+    private storage(): Storage | null {
+        try {
+            return globalThis.localStorage ?? null;
+        } catch {
+            return null;
+        }
+    }
+
     private newRun(): void {
         if (!this.cfg) return;
         this.nextSim = null;
@@ -374,6 +389,12 @@ export class Climb extends Component {
                 this.showOverlay(`${FALL_TEXT[sim.fallCause ?? 'edge']}\n\n練習不計紀錄\n\n點擊或按空白鍵 再練一次`);
                 return;
             }
+            if (this.recording) {
+                // ADR-06: a fall means starting over from 1F, and the unlocks go back to level 1.
+                if (sim.runMaxFloor !== null) recordLocalBest(this.storage(), { maxFloor: sim.runMaxFloor, bestClearMs: null });
+                updateProgress(this.storage(), afterFall);
+                this.startIndex = 0;
+            }
             const from = this.cfg!.levels[this.startIndex].floorFrom;
             this.showOverlay(`${FALL_TEXT[sim.fallCause ?? 'edge']}\n\n最高 ${sim.runMaxFloor ?? '-'}F · ${formatClimbTime(sim.climbSec)}\n種子 ${sim.seed}\n\n點擊或按空白鍵 從 ${from}F 再爬一次`);
         }
@@ -389,6 +410,8 @@ export class Climb extends Component {
             this.showOverlay(`練習完成！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}（不計紀錄）\n\n點擊或按空白鍵 再練一次\n右上「退出」回主畫面 開始挑戰 101`);
             return;
         }
+        // Clearing level N opens level N+1 in the level select, kept across reloads.
+        if (this.recording) updateProgress(this.storage(), (p) => afterLevelCleared(p, sim.levelIndex, this.cfg!.levels.length));
         const next = sim.next();
         if (next) {
             // ADR-02: stand on the platform, scroll up, show the next level; no black screen.
@@ -420,8 +443,17 @@ export class Climb extends Component {
     private finishEnding(): void {
         const sim = this.sim as ClimbSim;
         this.endSec = ENDING_SEC;
+        if (this.mode === 'cleared') return;
         this.mode = 'cleared';
-        this.showOverlay(`抵達塔尖！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}\n種子 ${sim.seed}\n\n點擊或按空白鍵 再玩一次`);
+        let round = '';
+        if (this.recording) {
+            // One round (周目) done: unlocks go back to level 1, the summit count goes up.
+            recordLocalBest(this.storage(), { maxFloor: SPIRE_TIP_FLOOR, bestClearMs: Math.round(sim.climbSec * 1000) });
+            const p = updateProgress(this.storage(), (q) => afterSummit(q, new Date()));
+            this.startIndex = 0;
+            round = `\n完成第 ${p.rounds} 周目 · 累計登頂 ${p.summits} 次\n關卡重新上鎖，接下來是第 ${p.rounds + 1} 周目`;
+        }
+        this.showOverlay(`抵達塔尖！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}\n種子 ${sim.seed}${round}\n\n點擊或按空白鍵 再玩一次`);
     }
 
     /**

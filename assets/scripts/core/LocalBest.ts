@@ -51,3 +51,23 @@ export function readLocalBest(storage: StorageLike | null): LocalBest | null {
         return null;
     }
 }
+
+/** Keeps the better record: a summit beats any floor, a faster clear beats a slower one. */
+export function betterBest(old: LocalBest | null, run: LocalBest): LocalBest {
+    if (!old) return run;
+    if (run.maxFloor !== old.maxFloor) return run.maxFloor > old.maxFloor ? run : { ...old };
+    if (run.bestClearMs === null) return { ...old };
+    if (old.bestClearMs === null || run.bestClearMs < old.bestClearMs) return { ...old, bestClearMs: run.bestClearMs };
+    return { ...old };
+}
+
+/** Called when a run ends (fall or summit). Storage failures are ignored. */
+export function recordLocalBest(storage: StorageLike | null, run: LocalBest): LocalBest {
+    const next = betterBest(readLocalBest(storage), run);
+    try {
+        storage?.setItem(BEST_KEY, JSON.stringify(next));
+    } catch {
+        // blocked storage: nothing kept
+    }
+    return next;
+}

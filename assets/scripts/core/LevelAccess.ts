@@ -1,6 +1,8 @@
 /**
  * Which levels the level-select panel lets a player start. Pure TS (no `cc`).
- * ADR-06: a fall always restarts at 1F, so normally only level 1 is open.
+ * Level 1 is always open; clearing level N opens level N+1 (`unlocked`, from core/Progress),
+ * so a run left by quitting can be resumed. A fall (ADR-06: back to 1F) or the summit ending
+ * (one round done) locks everything again.
  * Developer mode (金手指 RUNGM) opens every level, the spire included.
  */
 
@@ -11,9 +13,8 @@ export interface LevelLike {
     floorFrom: number | null;
 }
 
-/** `level` is kept for callers and future per-level rules. */
-export function levelAccess(_level: LevelLike, index: number, devMode: boolean): LevelAccess {
-    if (index === 0) return 'open';
-    if (!devMode) return 'locked';
-    return 'open';
+/** `unlocked` = 0-based index of the furthest open level. `level` is kept for future per-level rules. */
+export function levelAccess(_level: LevelLike, index: number, devMode: boolean, unlocked = 0): LevelAccess {
+    if (index === 0 || devMode) return 'open';
+    return index <= unlocked ? 'open' : 'locked';
 }

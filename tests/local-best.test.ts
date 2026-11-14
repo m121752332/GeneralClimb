@@ -25,3 +25,15 @@ test('readLocalBest tolerates throwing or missing storage', () => {
         { maxFloor: 8, bestClearMs: null },
     );
 });
+
+test('recordLocalBest keeps the better record', async () => {
+    const { betterBest, recordLocalBest } = await import('../assets/scripts/core/LocalBest.ts');
+    const data = new Map<string, string>();
+    const s = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { data.set(k, v); } };
+    assert.deepEqual(recordLocalBest(s, { maxFloor: 20, bestClearMs: null }), { maxFloor: 20, bestClearMs: null });
+    assert.deepEqual(recordLocalBest(s, { maxFloor: 12, bestClearMs: null }), { maxFloor: 20, bestClearMs: null });
+    assert.deepEqual(recordLocalBest(s, { maxFloor: 102, bestClearMs: 900000 }), { maxFloor: 102, bestClearMs: 900000 });
+    assert.deepEqual(recordLocalBest(s, { maxFloor: 102, bestClearMs: 800000 }), { maxFloor: 102, bestClearMs: 800000 });
+    assert.deepEqual(betterBest({ maxFloor: 102, bestClearMs: 800000 }, { maxFloor: 102, bestClearMs: 950000 }), { maxFloor: 102, bestClearMs: 800000 });
+    assert.equal(formatBest(readLocalBest(s)), '最佳紀錄：登頂 13:20');
+});

@@ -6,6 +6,7 @@ import { LevelLoader } from '../config/LevelLoader';
 import type { LevelConfig } from '../config/LevelConfig';
 import { GameSession } from '../core/GameSession';
 import { formatBest, readLocalBest } from '../core/LocalBest';
+import { formatRound, readProgress, unlockedIndex } from '../core/Progress';
 import { applyScreenFit } from '../core/ScreenFit';
 import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
@@ -104,6 +105,10 @@ export class Home extends Component {
         const bestBg = best.addComponent(Graphics);
         roundRect(bestBg, 380, 54, 27, hex('#0b1024', 190), hex('#ffc94a', 160), 2);
         makeLabel(best, formatBest(readLocalBest(this.storage())), 26, hex('#ffe2a0'), { bold: true });
+        // 周目 and total summits (core/Progress); the cloud total joins this with Google sign-in (M3).
+        makeLabel(this.node, formatRound(readProgress(this.storage())), 24, hex('#c9d3ff'), {
+            y: 52, bold: true, outline: hex('#0b1024'), outlineWidth: 2,
+        });
 
         makeButton(this.node, '開始遊戲', 460, 112, STYLE.primary, () => this.startGame(0), 0, -110);
 
@@ -242,7 +247,11 @@ export class Home extends Component {
             this.toast.show('關卡資料載入中…');
             return;
         }
-        openLevelSelect(this.node, this.config, GameSession.devMode, (i) => this.startGame(i), (msg) => this.toast.show(msg), () => this.toast.hide());
+        const progress = readProgress(this.storage());
+        openLevelSelect(
+            this.node, this.config, GameSession.devMode, (i) => this.startGame(i), (msg) => this.toast.show(msg), () => this.toast.hide(),
+            unlockedIndex(progress, this.config.levels.length), formatRound(progress),
+        );
     }
 
     private storage(): Storage | null {

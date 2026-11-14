@@ -34,3 +34,10 @@ test('level access: only level 1 without dev mode; dev mode opens every level in
     const dev = levels.map((l, i) => levelAccess(l, i, true));
     assert.deepEqual(dev, Array(14).fill('open'));
 });
+
+test('level access: cleared levels stay open up to the unlocked index', () => {
+    const levels = parseLevelConfig(JSON.parse(readFileSync(new URL('../assets/resources/config/levels.json', import.meta.url), 'utf8'))).levels;
+    const after3 = levels.map((l, i) => levelAccess(l, i, false, 3));
+    assert.deepEqual(after3, [...Array(4).fill('open'), ...Array(10).fill('locked')]);
+    assert.deepEqual(levels.map((l, i) => levelAccess(l, i, false, 13)), Array(14).fill('open'));
+});
