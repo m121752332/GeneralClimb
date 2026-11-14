@@ -325,12 +325,19 @@ export type Phase = 'climbing' | 'fallen' | 'cleared';
 export type FallCause = 'edge' | 'wind' | 'rain' | 'eagle';
 export type RiskTier = 'safe' | 'tense' | 'crisis';
 
+/** An eagle dive: progress 0..1 and the cell it is aimed at. */
+export interface EagleDive {
+    t: number;
+    col: number;
+    row: number;
+}
+
 /** GDD 7 fall messages. */
 export const FALL_TEXT: Record<FallCause, string> = {
     edge: '太靠邊了…',
     wind: '風大時要抓牢',
     rain: '雨天手滑了',
-    eagle: '被老鷹看到了',
+    eagle: '被老鷹撲下來了',
 };
 
 /** What a run carries from one level into the next (ADR-03: risk is not reset between levels). */
@@ -369,6 +376,13 @@ export class ClimbSim {
     speed = 1;
     /** Seconds the eagle has been watching a moving climber (0 when not spotted). */
     eagleSpotSec = 0;
+    /**
+     * The eagle's dive, once it has spotted a moving climber: aimed at the cell the climber
+     * was on when it dived, `t` 0..1 over `events.eagle.diveSec`. Stays at t = 1 after a hit.
+     */
+    eagleDive: EagleDive | null = null;
+    /** After a missed dive the eagle pulls up for this long before it can spot again. */
+    eagleRecoverSec = 0;
 
     private readonly cfg: LevelConfig;
     private readonly rng: Rng;
@@ -590,11 +604,29 @@ export class ClimbSim {
             this.rainMoveSec = 0;
         }
 
-        if (active === 'eagle' && moving) {
+        // Eagle: moving while it watches for spotSec makes it dive at where the climber is.
+        // The dive is committed: when it lands, a climber within hitCols / hitRows of the aim
+        // (even a graze) is knocked off; one who got far enough away is missed.
+        const eagle = this.cfg.events.eagle;
+        if (this.eagleDive) {
+            this.eagleDive.t = Math.min(1, this.eagleDive.t + dt / eagle.diveSec);
+            if (this.eagleDive.t >= 1) {
+                if (this.eagleHits(this.eagleDive)) {
+                    this.fall('eagle');
+                    return;
+                }
+                this.eagleDive = null;
+                this.eagleRecoverSec = eagle.diveSec;
+            }
+            this.eagleSpotSec = 0;
+        } else if (this.eagleRecoverSec > 0) {
+            this.eagleRecoverSec = Math.max(0, this.eagleRecoverSec - dt);
+            this.eagleSpotSec = 0;
+        } else if (active === 'eagle' && moving) {
             this.eagleSpotSec += dt;
-            if (this.eagleSpotSec >= this.cfg.events.eagle.spotSec / k) {
-                this.fall('eagle');
-                return;
+            if (this.eagleSpotSec >= eagle.spotSec / k) {
+                this.eagleSpotSec = 0;
+                this.eagleDive = { t: 0, col: this.col, row: Math.min(this.row, this.wall.rows - 1) };
             }
         } else {
             this.eagleSpotSec = 0;
@@ -647,6 +679,15 @@ export class ClimbSim {
             this.pushed = false;
             return;
         }
+    }
+
+    /** True when the climber is within the dive's reach (columns round the ring, rows up or down). */
+    eagleHits(dive: EagleDive): boolean {
+        const { hitCols, hitRows } = this.cfg.events.eagle;
+        let dc = Math.abs(this.col - dive.col);
+        if (this.wall.faces > 1) dc = Math.min(dc, this.wall.ring - dc);
+        const row = Math.min(this.row, this.wall.rows - 1);
+        return dc <= hitCols && Math.abs(row - dive.row) <= hitRows;
     }
 
     private fall(cause: FallCause): void {

@@ -14,6 +14,7 @@ import type { CrowdTuning } from '../climb/CrowdPlan';
 import { pushInPose } from '../core/Cutscene';
 import { canopyClearance, faceU } from '../climb/EntranceShape';
 import { buildEntrances } from './Entrance';
+import { Eagle3D } from './Eagle3D';
 
 /**
  * 3D view of the climb (ADR-10): a low-poly Taipei 101 built in code, the current level's
@@ -214,6 +215,7 @@ export class Tower3D {
     private gridNode: Node | null = null;
     private gridMesh: Mesh | null = null;
     private crowd: WindowCrowd | null = null;
+    private eagle: Eagle3D | null = null;
     private player!: Node;
     private body!: Node;
     private cape: Node | null = null;
@@ -281,10 +283,15 @@ export class Tower3D {
             return { node, destroy: () => mesh.destroy() };
         });
         this.buildPlayer();
+        this.eagle = new Eagle3D(this.root, (name, mb, parent) => {
+            const { node, mesh } = this.addMesh(name, mb, parent);
+            return { node, destroy: () => mesh.destroy() };
+        });
     }
 
     destroy(): void {
         this.crowd?.clear();
+        this.eagle?.destroy();
         this.gridMesh?.destroy();
         this.root.destroy();
         this.camera.node.destroy();
@@ -493,6 +500,7 @@ export class Tower3D {
             this.standOut = Math.max(0.5, (this.half(this.baseY - 0.05) - this.half(this.baseY + 0.05)) * 0.55);
         }
         this.crowd?.build(sim, this.baseY);
+        this.eagle?.reset();
         const mb = new MeshBuilder();
         if (wall.cols === 1) {
             this.buildLadder(mb, wall.rows);
@@ -785,6 +793,20 @@ export class Tower3D {
         const cy = this.camY + 1.2 + opts.shake;
         this.camera.node.setPosition(Math.sin(this.camYaw) * dist, cy, Math.cos(this.camYaw) * dist);
         this.camera.node.lookAt(this.tmp.set(0, this.camY, 0));
+
+        this.eagle?.update(dt, sim, {
+            feet: this.tmp2.set(p.x, y, p.z),
+            yaw: p.yaw,
+            aim: (col, row, out) => this.aimPoint(sim, col, row, out),
+        });
+    }
+
+    /** Chest of a climber hanging on cell (col, row) of the current level: where the eagle dives. */
+    private aimPoint(sim: ClimbSim, col: number, row: number, out: Vec3): Vec3 {
+        const { wall } = sim;
+        const y = this.baseY + row * ROW_H;
+        const p = surfacePoint(col + 0.5, this.half(y + 1.2), wall.cols, wall.faces, PLAYER_OUT + 0.45);
+        return out.set(p.x, y + HEAD * 0.55, p.z);
     }
 
     /**
@@ -836,6 +858,7 @@ export class Tower3D {
      * then rises, pulls back and circles round, tilting down to the streets.
      */
     updateEnding(t: number): void {
+        this.eagle?.reset();
         const top = summitY(this.rowsPerFloor, this.ladderRows);
         const seat = 1.15;
         // Hips (0.55 up the unscaled model) rest on the ring.
