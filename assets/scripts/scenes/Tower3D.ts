@@ -240,10 +240,9 @@ export class Tower3D {
     private readonly tmp2 = new Vec3();
 
     private readonly crowdTuning: CrowdTuning;
-    /** The 101 has a grand entrance on each face (Entrance.ts) that the climber goes round. */
-    private readonly hasEntrance = true;
 
     /** Practice mode: a small house of this many floors instead of the 101 (0 = the 101). */
+    /** 0 = the 101, which has a grand entrance on each face (Entrance.ts) the climber goes round. */
     private readonly houseFloors: number;
 
     constructor(rowsPerFloor: number, ladderRows: number, crowdTuning: CrowdTuning, houseFloors = 0) {
@@ -672,7 +671,7 @@ export class Tower3D {
         const y = fallY ?? wallY + (this.standY - wallY) * stand;
         let out = PLAYER_OUT + (this.standOut - PLAYER_OUT) * stand;
         // On the wall, hang out round the entrance canopy instead of climbing through it.
-        if (this.hasEntrance && wall.faces > 1 && stand < 1) {
+        if (this.houseFloors === 0 && wall.faces > 1 && stand < 1) {
             const u = faceU(s, wall.cols, this.half(y + 1.2));
             out += (canopyClearance(u, y, HEAD, out) - out) * (1 - stand);
         }
