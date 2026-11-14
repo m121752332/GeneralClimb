@@ -111,7 +111,7 @@ export class Home extends Component {
         const btnW = 296;
         const btnH = 86;
         makeButton(this.node, '選擇關卡', btnW, btnH, STYLE.secondary, () => this.openLevels(), -colX, -245);
-        makeButton(this.node, '練習模式', btnW, btnH, STYLE.secondary, () => this.toast.show('練習模式即將推出'), colX, -245);
+        makeButton(this.node, '練習模式', btnW, btnH, STYLE.secondary, () => this.startPractice(), colX, -245);
         makeButton(this.node, '設定', btnW, btnH, STYLE.secondary, () => openSettings(this.node, {
             onChange: () => {
                 this.drawSound?.();
@@ -220,6 +220,20 @@ export class Home extends Component {
             director.loadScene(CLIMB_SCENE);
         } else {
             this.toast.show(`第 ${levelIndex + 1} 關製作中`);
+        }
+    }
+
+    /** Practice (GDD §7): the three-storey house in the Climb scene; nothing is recorded. */
+    private startPractice(): void {
+        GameSession.levelIndex = 0;
+        GameSession.mode = 'practice';
+        // The push-in to the 101's base belongs to the real climb, not the practice house.
+        GameSession.pushIn = false;
+        if (assetManager.main?.getSceneInfo(CLIMB_SCENE)) {
+            director.loadScene(CLIMB_SCENE);
+        } else {
+            GameSession.mode = 'normal';
+            this.toast.show('練習模式製作中');
         }
     }
 

@@ -5,6 +5,39 @@
  */
 import type { EventKind, EventsConfig, LevelConfig, LevelDef, PagodaFlareConfig, WidthConfig } from '../config/LevelConfig';
 
+// ---------------------------------------------------------------- Practice (GDD §7)
+
+/** Level id of the practice house; real levels are 1..14. */
+export const PRACTICE_LEVEL_ID = 0;
+
+/**
+ * Practice mode's only level: a low house of `practice.floors` floors on the `practice.width`
+ * wall, standing on the ground (start platform), no random wind and no obstacles.
+ */
+export function practiceLevel(cfg: LevelConfig): LevelDef {
+    const floors = cfg.practice.floors;
+    return {
+        id: PRACTICE_LEVEL_ID,
+        name: '三層樓平房',
+        floors: `1-${floors}F`,
+        width: cfg.practice.width,
+        windChance: 0,
+        obstaclesPer12Rows: 0,
+        startPlatform: true,
+        floorFrom: 1,
+        floorTo: floors,
+        rows: floors * cfg.player.rowsPerFloor,
+    };
+}
+
+/**
+ * Rows at which the practice demo events start: `practice.demoAt` (shares of the house
+ * height) turned into rows, never the ground row nor the roof.
+ */
+export function demoRows(rows: number, demoAt: readonly number[]): number[] {
+    return demoAt.map((f) => Math.min(rows - 1, Math.max(1, Math.round(rows * f))));
+}
+
 // ---------------------------------------------------------------- RNG
 
 export type Rng = () => number;
@@ -184,15 +217,22 @@ export class EventScheduler {
     private windChance: number;
     private readonly rng: Rng;
 
-    constructor(events: EventsConfig, windChance: number, rng: Rng) {
+    /** Practice: no timed events; demo events come only from trigger() and use the shortest duration. */
+    readonly demo: boolean;
+
+    constructor(events: EventsConfig, windChance: number, rng: Rng, demo = false) {
         this.events = events;
         this.windChance = windChance;
         this.rng = rng;
-        this.due = {
-            wind: events.wind.firstSec,
-            rain: events.rain.firstSec,
-            eagle: events.eagle.firstSec,
-        };
+        this.demo = demo;
+        this.due = demo
+            ? { wind: Infinity, rain: Infinity, eagle: Infinity }
+            : { wind: events.wind.firstSec, rain: events.rain.firstSec, eagle: events.eagle.firstSec };
+    }
+
+    /** Queues one event now (practice demos). It still waits for any running event and its cooldown. */
+    trigger(kind: EventKind): void {
+        this.queue.push(kind);
     }
 
     /** The event whose effects apply right now (Active phase only). */
@@ -239,7 +279,7 @@ export class EventScheduler {
             if (this.state === 'warning') {
                 const kind = this.kind as EventKind;
                 const [min, max] = this.events[kind].durationSec;
-                this.activeTotal = min + this.rng() * (max - min);
+                this.activeTotal = this.demo ? min : min + this.rng() * (max - min);
                 if (kind === 'wind') this.windDir = this.rng() < 0.5 ? -1 : 1;
                 this.enter('active', kind, this.activeTotal + carry);
             } else if (this.state === 'active') {
@@ -338,10 +378,20 @@ export class ClimbSim {
     private rainMoveSec = 0;
     private windPushSec = 0;
 
-    constructor(cfg: LevelConfig, levelIndex: number, seed: number, carry?: RunCarry) {
+    /**
+     * Practice run (GDD §7): the practice house, each demo event once at its row, gentler
+     * penalties (scaled by `practice.intensity`), no next level and nothing recorded.
+     */
+    readonly practice: boolean;
+    /** Practice: rows where the demo events start, and how many have started. */
+    readonly demoRows: readonly number[];
+    demoIndex = 0;
+
+    constructor(cfg: LevelConfig, levelIndex: number, seed: number, carry?: RunCarry, practice = false) {
         this.cfg = cfg;
         this.seed = seed;
-        const level = cfg.levels[levelIndex];
+        this.practice = practice;
+        const level = practice ? practiceLevel(cfg) : cfg.levels[levelIndex];
         if (!level) throw new Error(`no level at index ${levelIndex}`);
         const width = cfg.widths[level.width];
         this.rng = carry ? carry.rng : createRng(seed);
@@ -350,7 +400,8 @@ export class ClimbSim {
         // A ladder (one column) is never wrapped round the tower.
         const faces = width.cols === 1 ? 1 : cfg.tower.faces;
         this.wall = buildWall(width, level, this.rng, flareFor(cfg.pagodaFlare, level), faces);
-        this.scheduler = carry ? carry.scheduler : new EventScheduler(cfg.events, level.windChance, this.rng);
+        this.scheduler = carry ? carry.scheduler : new EventScheduler(cfg.events, level.windChance, this.rng, practice);
+        this.demoRows = practice ? demoRows(level.rows, cfg.practice.demoAt) : [];
         this.scheduler.setWindChance(level.windChance);
         this.risk = carry ? carry.risk : 0;
         this.climbSec = carry ? carry.climbSec : 0;
@@ -365,7 +416,7 @@ export class ClimbSim {
      * after the last level (the summit).
      */
     next(): ClimbSim | null {
-        if (this.phase !== 'cleared') return null;
+        if (this.phase !== 'cleared' || this.practice) return null;
         const nextLevel = this.cfg.levels[this.levelIndex + 1];
         if (!nextLevel) return null;
         const sim = new ClimbSim(this.cfg, this.levelIndex + 1, this.seed, {
@@ -393,7 +444,31 @@ export class ClimbSim {
 
     /** True after clearing the last level: the run reached the top of the spire. */
     get summit(): boolean {
-        return this.phase === 'cleared' && this.levelIndex === this.cfg.levels.length - 1;
+        return !this.practice && this.phase === 'cleared' && this.levelIndex === this.cfg.levels.length - 1;
+    }
+
+    /**
+     * Penalty strength: 1 in a real run, `practice.intensity` in practice. It softens what an
+     * event does (slower wind push and risk, longer rain grace and eagle spotting time); the
+     * events still last their shortest configured time.
+     */
+    get intensity(): number {
+        return this.practice ? this.cfg.practice.intensity : 1;
+    }
+
+    /** Practice demo events still to come (not yet started). */
+    get demosLeft(): number {
+        return this.demoRows.length - this.demoIndex;
+    }
+
+    /**
+     * Practice: the roof stays shut while a demo event is still to come, queued, warning or
+     * running, so a player who rushes up still sees every one before practice ends.
+     */
+    get roofLocked(): boolean {
+        if (!this.practice) return false;
+        const s = this.scheduler;
+        return this.demosLeft > 0 || s.queued.length > 0 || s.state === 'warning' || s.state === 'active';
     }
 
     get tier(): RiskTier {
@@ -454,12 +529,20 @@ export class ClimbSim {
             }
         }
 
+        // Practice: each demo event starts once the climber first reaches its row.
+        while (this.demoIndex < this.demoRows.length && this.maxRow >= this.demoRows[this.demoIndex]) {
+            this.scheduler.trigger(this.cfg.practice.demoEvents[this.demoIndex]);
+            this.demoIndex++;
+        }
+
+        const k = this.intensity;
         // Wind (ADR-04): moving in a gust pushes the climber one cell outward every pushEverySec.
         // Not while standing on a platform: there is nothing to be pushed off.
+        const pushEvery = this.cfg.events.wind.pushEverySec / k;
         if (active === 'wind' && hasInput && !this.onPlatform) {
             this.windPushSec += dt;
-            if (!this.stepping && this.windPushSec >= this.cfg.events.wind.pushEverySec) {
-                this.windPushSec -= this.cfg.events.wind.pushEverySec;
+            if (!this.stepping && this.windPushSec >= pushEvery) {
+                this.windPushSec -= pushEvery;
                 this.push();
             }
         } else {
@@ -492,14 +575,14 @@ export class ClimbSim {
         else if (zone === 'safe') perSec += this.gripping ? risk.calmGripPerSec : risk.calmClimbPerSec;
 
         if (active === 'wind' && moving) {
-            perSec += risk.windMovePerSec;
+            perSec += risk.windMovePerSec * k;
             cause = 'wind';
         }
         this.risk = Math.min(risk.max, Math.max(0, this.risk + perSec * dt));
 
         if (active === 'rain' && moving) {
             this.rainMoveSec += dt;
-            if (this.rainMoveSec > risk.rainGraceSec) {
+            if (this.rainMoveSec > risk.rainGraceSec / k) {
                 this.fall('rain');
                 return;
             }
@@ -509,7 +592,7 @@ export class ClimbSim {
 
         if (active === 'eagle' && moving) {
             this.eagleSpotSec += dt;
-            if (this.eagleSpotSec >= this.cfg.events.eagle.spotSec) {
+            if (this.eagleSpotSec >= this.cfg.events.eagle.spotSec / k) {
                 this.fall('eagle');
                 return;
             }
@@ -553,6 +636,7 @@ export class ClimbSim {
             const col = wrapCol(this.wall, this.col + dx);
             const row = this.row + dy;
             if (row < 0) continue;
+            if (row >= this.wall.rows && this.roofLocked) continue;
             if (row < this.wall.rows && zoneOf(this.wall, col, row) !== 'out' && isObstacle(this.wall, col, row)) continue;
             this.fromCol = this.col;
             this.fromRow = this.row;

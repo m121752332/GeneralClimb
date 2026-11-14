@@ -69,6 +69,17 @@ export function towerSections(rowsPerFloor: number): Section[] {
     return out;
 }
 
+/** Practice house (GDD §7): half width of its square plan (about 12 units across). */
+export const HOUSE_HALF = 6;
+
+/**
+ * The practice house as a single straight section from the ground to the roof of its top
+ * floor, so the same surface maths (halfAt, surfacePoint) and level grid work on it.
+ */
+export function houseSections(rowsPerFloor: number, floors: number): Section[] {
+    return [{ kind: 'base', floorFrom: 1, floorTo: floors, y0: 0, y1: floorY(floors + 1, rowsPerFloor), half0: HOUSE_HALF, half1: HOUSE_HALF }];
+}
+
 /** Roof of the top floors: the crown and spire start here. */
 export function roofY(rowsPerFloor: number): number {
     return floorY(TOP_TO + 1, rowsPerFloor);

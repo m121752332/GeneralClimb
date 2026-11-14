@@ -230,6 +230,11 @@
       "rain",
       "eagle"
     ],
+    "demoAt": [
+      0.1,
+      0.4,
+      0.7
+    ],
     "intensity": 0.5
   }
 }

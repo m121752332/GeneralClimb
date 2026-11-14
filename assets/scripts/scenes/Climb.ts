@@ -88,6 +88,24 @@ const MINIMAP_HALF_W = 34;
 
 const EVENT_LABEL = { wind: '風', rain: '雨', eagle: '鷹' } as const;
 
+/** Practice mode (GDD §7): what to do when each event comes, shown while it warns and runs. */
+const PRACTICE_TIP = {
+    wind: '強風來了！放開方向鍵抓牢\n亂動會被吹向轉角（危險區）',
+    rain: '下雨了！手會滑\n完全停下，等雨停再爬',
+    eagle: '老鷹來了！不要動\n等牠飛走就安全',
+} as const;
+/** Practice tip sits under the HUD band. */
+const TIP_TOP = 250;
+
+/** `?practice=1` in the page URL opens practice mode directly (testing aid, like `?level=`). */
+function practiceFromUrl(): boolean {
+    try {
+        return new URLSearchParams(globalThis.location?.search ?? '').get('practice') === '1';
+    } catch {
+        return false;
+    }
+}
+
 /**
  * Climb scene: levels 1–12 in one run (grid climbing, grip on release, risk meter,
  * wind / rain / eagle, pagoda flare, rise between levels, fall back to the start).
@@ -150,6 +168,9 @@ export class Climb extends Component {
     private lastTapMs = 0;
     private startIndex = 0;
     private nextSim: ClimbSim | null = null;
+    /** Practice mode: the three-storey house, one gentle wind, rain and eagle, nothing recorded. */
+    private practice = false;
+    private tipLabel!: Label;
     private transSec = 0;
     private endSec = 0;
     /** The fall has hit the ground (plays the landing thud once). */
@@ -177,10 +198,11 @@ export class Climb extends Component {
         const uiCam = this.node.getComponentInChildren(Camera);
         if (uiCam) uiCam.clearFlags = Camera.ClearFlag.DEPTH_ONLY;
 
+        this.practice = GameSession.mode === 'practice' || practiceFromUrl();
         LevelLoader.load().then((cfg) => {
             this.cfg = cfg;
-            this.startIndex = this.resolveStartIndex(cfg);
-            this.tower = new Tower3D(cfg.player.rowsPerFloor, cfg.player.ladderRows, cfg.crowd);
+            this.startIndex = this.practice ? 0 : this.resolveStartIndex(cfg);
+            this.tower = new Tower3D(cfg.player.rowsPerFloor, cfg.player.ladderRows, cfg.crowd, this.practice ? cfg.practice.floors : 0);
             return this.tower.init();
         }).then(() => {
             this.newRun();
@@ -206,10 +228,13 @@ export class Climb extends Component {
     }
 
     /** Read-only snapshot for tests and debugging. */
-    get state(): { mode: Mode; seed: number; row: number; col: number; floor: number | null; risk: number; climbSec: number } | null {
+    get state(): { mode: Mode; practice: boolean; seed: number; row: number; col: number; floor: number | null; risk: number; climbSec: number; event: string | null } | null {
         const s = this.sim;
         if (!s) return null;
-        return { mode: this.mode, seed: s.seed, row: s.row, col: s.col, floor: s.floor, risk: s.risk, climbSec: s.climbSec };
+        return {
+            mode: this.mode, practice: s.practice, seed: s.seed, row: s.row, col: s.col, floor: s.floor, risk: s.risk,
+            climbSec: s.climbSec, event: s.scheduler.state === 'idle' ? null : `${s.scheduler.kind}:${s.scheduler.state}`,
+        };
     }
 
     // ------------------------------------------------------------ run flow
@@ -234,16 +259,20 @@ export class Climb extends Component {
     private newRun(): void {
         if (!this.cfg) return;
         this.nextSim = null;
-        this.sim = new ClimbSim(this.cfg, this.startIndex, randomSeed());
+        this.sim = new ClimbSim(this.cfg, this.startIndex, randomSeed(), undefined, this.practice);
         this.speed = effectiveSpeed(GameSession.devMode === true, this.cfg.dev.climbSpeeds, settings().get().devSpeed);
         this.sim.speed = this.speed;
-        console.log(`[Climb] level ${this.sim.level.id} seed ${this.sim.seed}`);
+        console.log(this.practice ? `[Climb] practice seed ${this.sim.seed}` : `[Climb] level ${this.sim.level.id} seed ${this.sim.seed}`);
         this.tumble = 0;
         this.tower!.setLevel(this.sim);
         this.tower!.snap(this.sim);
         sound().music('climb');
         this.mode = 'ready';
         const l = this.sim.level;
+        if (this.practice) {
+            this.showOverlay(`練習模式 · ${l.name}\n風、雨、老鷹各來一次（較溫和）\n不計紀錄\n\n方向鍵 / WASD 或拖曳下半部攀爬\n放開 = 抓牢\n拖曳上半部 / Q E 旋轉視角\n爬上屋頂就完成`);
+            return;
+        }
         const hint = l.floorFrom === null ? '爬梯只能上下，強風時抓牢' : '可繞到其他面，轉角是危險區';
         this.showOverlay(`第 ${l.id} 關 ${l.name}\n${floorsText(l)}\n\n方向鍵 / WASD 或拖曳下半部攀爬\n放開 = 抓牢\n拖曳上半部 / Q E 旋轉視角\n${hint}`);
         if (GameSession.pushIn) {
@@ -338,6 +367,10 @@ export class Climb extends Component {
         if (this.fallSec >= FALL_TOTAL_SEC) {
             const sim = this.sim as ClimbSim;
             this.mode = 'fallen';
+            if (sim.practice) {
+                this.showOverlay(`${FALL_TEXT[sim.fallCause ?? 'edge']}\n\n練習不計紀錄\n\n點擊或按空白鍵 再練一次`);
+                return;
+            }
             const from = this.cfg!.levels[this.startIndex].floorFrom;
             this.showOverlay(`${FALL_TEXT[sim.fallCause ?? 'edge']}\n\n最高 ${sim.runMaxFloor ?? '-'}F · ${formatClimbTime(sim.climbSec)}\n種子 ${sim.seed}\n\n點擊或按空白鍵 從 ${from}F 再爬一次`);
         }
@@ -345,6 +378,14 @@ export class Climb extends Component {
 
     private onCleared(): void {
         const sim = this.sim as ClimbSim;
+        if (sim.practice) {
+            // Practice ends on the roof: no next level, no ending, nothing recorded.
+            sound().music(null);
+            sound().play('levelUp');
+            this.mode = 'cleared';
+            this.showOverlay(`練習完成！\n\n攀爬時間 ${formatClimbTime(sim.climbSec)}（不計紀錄）\n\n點擊或按空白鍵 再練一次\n右上「退出」回主畫面 開始挑戰 101`);
+            return;
+        }
         const next = sim.next();
         if (next) {
             // ADR-02: stand on the platform, scroll up, show the next level; no black screen.
@@ -668,6 +709,13 @@ export class Climb extends Component {
         this.exitLabel.string = '退出';
         this.speedLabel = this.makeLabel('Speed', hud, 28);
         this.speedLabel.color = hex('#ffd34a');
+        const tip = this.makeLabel('PracticeTip', hud, 30);
+        tip.enableOutline = true;
+        tip.outlineColor = new Color(0, 0, 0, 220);
+        tip.outlineWidth = 3;
+        tip.color = hex('#ffe2a0');
+        tip.node.active = false;
+        this.tipLabel = tip;
         const skip = this.makeLabel('Skip', this.node, 26);
         skip.string = '點擊或按任意鍵略過 ▶▶';
         skip.enableOutline = true;
@@ -829,7 +877,7 @@ export class Climb extends Component {
         this.floorLabel.string = floor === null ? sim.level.name : `${floor}F`;
         this.floorLabel.node.setPosition(0, top - 52);
         const shown = sim.level;
-        this.levelLabel.string = `第 ${shown.id} 關 ${shown.name} ${floorsText(shown)}`;
+        this.levelLabel.string = sim.practice ? `練習模式 ${shown.name}` : `第 ${shown.id} 關 ${shown.name} ${floorsText(shown)}`;
         this.levelLabel.node.setPosition(0, top - 106);
         this.timeLabel.string = formatClimbTime(sim.climbSec);
         this.timeLabel.node.setPosition(right - 24, top - 130);
@@ -889,7 +937,17 @@ export class Climb extends Component {
         h.stroke();
         this.riskLabel.node.setPosition(mx + 10, my + mh + 22);
         this.gmLabel.node.setPosition(0, top - 172);
-        if (!ending) this.drawMiniMap(h, tower, sim, right - 52, top - 170);
+        if (!ending && !sim.practice) this.drawMiniMap(h, tower, sim, right - 52, top - 170);
+
+        // Practice: say what to do while an event warns and runs (not over the result screens).
+        const tipKind = sim.practice && (this.mode === 'play' || this.mode === 'paused') ? kind : null;
+        // Rushed to the top before the demos are done: the roof waits for them.
+        const waitRoof = sim.practice && this.mode === 'play' && tipKind === null && sim.roofLocked && sim.row >= sim.wall.rows - 1;
+        this.tipLabel.node.active = (tipKind !== null || waitRoof) && !this.overlayLabel.node.active;
+        if (tipKind || waitRoof) {
+            this.tipLabel.string = tipKind ? PRACTICE_TIP[tipKind] : '天氣還沒示範完\n抓牢等一下再上屋頂';
+            this.tipLabel.node.setPosition(0, top - TIP_TOP);
+        }
 
         // Event icon (top-left): blinks during warning, time bar while active.
         const showIcon = kind !== null && (s.state === 'active' || Math.floor(this.elapsed * 8) % 2 === 0);

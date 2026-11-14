@@ -101,6 +101,8 @@ export interface PracticeConfig {
     floors: number;
     width: string;
     demoEvents: EventKind[];
+    /** Where each demo event starts, as a share of the house height (0..1, increasing; one per event). */
+    demoAt: number[];
     intensity: number;
 }
 
@@ -378,6 +380,15 @@ function checkPractice(c: Checker, root: Obj, widths: Obj): void {
         if (typeof kind !== 'string' || EVENT_KINDS.indexOf(kind) < 0) {
             c.fail(`$.practice.demoEvents[${i}]`, `must be one of ${EVENT_KINDS.join(' / ')}`);
         }
+    });
+    const at = p?.demoAt;
+    if (!Array.isArray(at) || at.length !== demo.length) {
+        c.fail('$.practice.demoAt', 'must be an array with one entry per demo event');
+        return;
+    }
+    at.forEach((v: unknown, i: number) => {
+        const ok = typeof v === 'number' && v > 0 && v < 1 && (i === 0 || v > (at[i - 1] as number));
+        if (!ok) c.fail(`$.practice.demoAt[${i}]`, 'must be a number in (0, 1), increasing');
     });
 }
 
