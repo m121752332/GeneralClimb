@@ -223,22 +223,22 @@ test('rain: moving longer than rainGraceSec falls; gripping is safe', () => {
     assert.equal(sim.fallCause, 'rain');
 });
 
-test('eagle: stopping before spotSec is safe, moving through it makes it dive and knock the climber off', () => {
+test('eagle: holding still is safe; any move locks it on (red eyes), then it dives and knocks the climber off', () => {
     const c = cfg();
     const sim = new ClimbSim(c, 0, 7);
     run(sim, 300 + c.events.warningSec + 0.05);
     assert.equal(sim.scheduler.activeKind, 'eagle');
-    run(sim, c.events.eagle.spotSec / 2, UP);
-    run(sim, 0.5);
-    assert.equal(sim.phase, 'climbing');
-    assert.equal(sim.eagleSpotSec, 0);
+    run(sim, 1);
+    assert.equal(sim.eagleGlareSec, 0, 'still: not seen');
     assert.equal(sim.eagleDive, null);
-    run(sim, c.events.eagle.spotSec + 0.05, UP);
-    assert.equal(sim.phase, 'climbing', 'spotted: the eagle dives first');
+    sim.update(FRAME, UP);
+    assert.ok(sim.eagleGlareSec > 0, 'one move and it locks on');
+    // Freezing now is too late: red eyes, then the dive.
+    run(sim, c.events.eagle.spotSec + 0.02);
     const dive = sim.eagleDive;
     assert.ok(dive, 'diving');
     assert.equal(dive.col, sim.col, 'aimed at the climber');
-    // Freezing now is too late: the dive is committed.
+    assert.equal(sim.phase, 'climbing');
     run(sim, c.events.eagle.diveSec + 0.05);
     assert.equal(sim.phase, 'fallen');
     assert.equal(sim.fallCause, 'eagle');

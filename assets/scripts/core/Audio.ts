@@ -8,7 +8,7 @@
  */
 
 export type SoundId =
-    | 'click' | 'step' | 'grip' | 'warnWind' | 'warnRain' | 'warnEagle' | 'eagleDive'
+    | 'click' | 'step' | 'grip' | 'warnWind' | 'warnRain' | 'warnEagle' | 'eagleSpot' | 'eagleDive'
     | 'fall' | 'land' | 'levelUp' | 'summit';
 
 export type Wave = 'square' | 'triangle' | 'sawtooth' | 'sine' | 'noise';
@@ -46,6 +46,12 @@ export const SOUNDS: Readonly<Record<SoundId, readonly Tone[]>> = {
         { at: 0, dur: 0.35, wave: 'sawtooth', freq: 1900, toFreq: 1300, gain: 0.12 },
         { at: 0.4, dur: 0.12, wave: 'square', freq: 990, gain: 0.12 },
         { at: 0.58, dur: 0.12, wave: 'square', freq: 990, gain: 0.12 },
+    ],
+    // Locked on: a harsh rising shriek and a low growl.
+    eagleSpot: [
+        { at: 0, dur: 0.22, wave: 'sawtooth', freq: 1400, toFreq: 2600, gain: 0.14 },
+        { at: 0.22, dur: 0.3, wave: 'sawtooth', freq: 2600, toFreq: 2100, gain: 0.12 },
+        { at: 0, dur: 0.4, wave: 'square', freq: 110, toFreq: 80, gain: 0.12 },
     ],
     // The stoop: a sharp screech over a rising rush of air.
     eagleDive: [

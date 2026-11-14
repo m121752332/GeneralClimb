@@ -374,8 +374,11 @@ export class ClimbSim {
     maxRow = 0;
     /** Climb speed multiplier (developer mode only; 1 for players). Scales step time only. */
     speed = 1;
-    /** Seconds the eagle has been watching a moving climber (0 when not spotted). */
-    eagleSpotSec = 0;
+    /**
+     * Red eyes: seconds left before the eagle dives, once it has seen the climber move
+     * (0 = not locked on). Locking on is instant and cannot be undone by freezing.
+     */
+    eagleGlareSec = 0;
     /**
      * The eagle's dive, once it has spotted a moving climber: aimed at the cell the climber
      * was on when it dived, `t` 0..1 over `events.eagle.diveSec`. Stays at t = 1 after a hit.
@@ -604,9 +607,10 @@ export class ClimbSim {
             this.rainMoveSec = 0;
         }
 
-        // Eagle: moving while it watches for spotSec makes it dive at where the climber is.
-        // The dive is committed: when it lands, a climber within hitCols / hitRows of the aim
-        // (even a graze) is knocked off; one who got far enough away is missed.
+        // Eagle: any move while it is out locks it on (red eyes); spotSec later it dives at the
+        // cell the climber is on then. The dive is committed: when it lands, a climber within
+        // hitCols / hitRows of the aim (even a graze) is knocked off; one who got far enough
+        // away is missed.
         const eagle = this.cfg.events.eagle;
         if (this.eagleDive) {
             this.eagleDive.t = Math.min(1, this.eagleDive.t + dt / eagle.diveSec);
@@ -618,18 +622,15 @@ export class ClimbSim {
                 this.eagleDive = null;
                 this.eagleRecoverSec = eagle.diveSec;
             }
-            this.eagleSpotSec = 0;
         } else if (this.eagleRecoverSec > 0) {
             this.eagleRecoverSec = Math.max(0, this.eagleRecoverSec - dt);
-            this.eagleSpotSec = 0;
-        } else if (active === 'eagle' && moving) {
-            this.eagleSpotSec += dt;
-            if (this.eagleSpotSec >= eagle.spotSec / k) {
-                this.eagleSpotSec = 0;
+        } else if (this.eagleGlareSec > 0) {
+            this.eagleGlareSec = Math.max(0, this.eagleGlareSec - dt);
+            if (this.eagleGlareSec === 0) {
                 this.eagleDive = { t: 0, col: this.col, row: Math.min(this.row, this.wall.rows - 1) };
             }
-        } else {
-            this.eagleSpotSec = 0;
+        } else if (active === 'eagle' && moving) {
+            this.eagleGlareSec = eagle.spotSec / k;
         }
 
         if (this.risk >= risk.max) this.fall(cause);

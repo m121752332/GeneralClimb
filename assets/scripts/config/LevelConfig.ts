@@ -38,7 +38,7 @@ export interface EventsConfig {
     wind: TimedEventConfig & { pushEverySec: number };
     rain: TimedEventConfig;
     /**
-     * spotSec: moving this long while it watches makes the eagle dive; diveSec: how long the
+     * spotSec: after any move while it is out, the eagle glares (red eyes) this long, then dives; diveSec: how long the
      * dive takes to reach the aimed cell; hitCols / hitRows: how close counts as a hit there.
      */
     eagle: TimedEventConfig & { spotSec: number; diveSec: number; hitCols: number; hitRows: number };

@@ -15,7 +15,7 @@
 export type RGB = readonly [number, number, number];
 type V3 = [number, number, number];
 
-export type EaglePartName = 'Body' | 'WingL' | 'WingR' | 'Legs';
+export type EaglePartName = 'Body' | 'WingL' | 'WingR' | 'Legs' | 'Glow';
 
 export interface EaglePart {
     name: EaglePartName;
@@ -52,7 +52,13 @@ export const EAGLE_COL = {
     leg: rgb('#efa02a'),
     claw: rgb('#2a1a16'),
     trousers: rgb('#4a2020'),
+    /** Red eyes when it locks on (unlit, full brightness). */
+    glare: rgb('#ff2414'),
+    glareRay: rgb('#ff7a3a'),
 };
+
+/** Eye centres in body space (left eye at -x). */
+export const EYE: V3 = [0.17, 0.22, -0.95];
 
 /** Wing span in model units (tip to tip, fully spread). */
 export const EAGLE_SPAN = 7.0;
@@ -94,9 +100,12 @@ class Builder {
     colors: number[] = [];
     indices: number[] = [];
 
+    /** Glow parts skip the lighting so they read at full brightness. */
+    unlit = false;
+
     private vert(p: V3, n: V3, c: RGB): number {
         this.positions.push(p[0], p[1], p[2]);
-        this.colors.push(...lit(c, n));
+        this.colors.push(...(this.unlit ? [c[0], c[1], c[2], 1] : lit(c, n)));
         return this.positions.length / 3 - 1;
     }
 
@@ -175,8 +184,8 @@ function buildBody(): EaglePart {
     for (const s of [-1, 1]) {
         b.quad([s * 0.06, 0.32, -0.98], [s * 0.21, 0.29, -0.9], [s * 0.22, 0.25, -0.95], [s * 0.07, 0.27, -1.03], C.neck);
         // Eye: golden iris with a dark pupil.
-        b.ellipsoid([s * 0.17, 0.22, -0.95], [0.045, 0.045, 0.04], C.iris, 6, 4);
-        b.ellipsoid([s * 0.195, 0.222, -0.965], [0.022, 0.024, 0.02], C.pupil, 5, 3);
+        b.ellipsoid([s * EYE[0], EYE[1], EYE[2]], [0.045, 0.045, 0.04], C.iris, 6, 4);
+        b.ellipsoid([s * (EYE[0] + 0.025), EYE[1] + 0.002, EYE[2] - 0.015], [0.022, 0.024, 0.02], C.pupil, 5, 3);
     }
     // Hooked beak: a wedge forward from the face, curling down at the tip.
     const top: V3 = [0, 0.24, -1.0];
@@ -279,7 +288,33 @@ function buildLegs(): EaglePart {
     return b.part('Legs', HIP);
 }
 
-/** All parts: body (with head, beak, tail), both spread wings, legs with talons. */
+/**
+ * Red-eye glare, shown only while the eagle is locked on: each eye swells into a glowing red
+ * ball with a burst of rays round it, big enough to read from the usual camera distance.
+ */
+function buildGlow(): EaglePart {
+    const b = new Builder();
+    b.unlit = true;
+    const C = EAGLE_COL;
+    for (const s of [-1, 1]) {
+        const c: V3 = [EYE[0] * s + s * 0.02, EYE[1], EYE[2]];
+        b.ellipsoid(c, [0.085, 0.085, 0.085], C.glare, 8, 5);
+        // Rays in the plane facing out of the side of the head (and a little forward).
+        const rays = 8;
+        for (let i = 0; i < rays; i++) {
+            const a = (i / rays) * Math.PI * 2;
+            const len = i % 2 === 0 ? 0.55 : 0.32;
+            const dy = Math.sin(a), dz = Math.cos(a);
+            const w = 0.035;
+            const root = (k: number): V3 => [c[0] + s * 0.03, c[1] + dz * k, c[2] - dy * k];
+            const side = (k: number, off: number): V3 => [c[0] + s * 0.03, c[1] + dz * k - dy * off, c[2] - dy * k - dz * off];
+            b.tri(side(0.06, -w), side(0.06, w), root(len), C.glare, C.glare, C.glareRay);
+        }
+    }
+    return b.part('Glow', [0, 0, 0]);
+}
+
+/** All parts: body (with head, beak, tail), both spread wings, legs with talons, red-eye glow. */
 export function eagleParts(): EaglePart[] {
-    return [buildBody(), buildWing(-1), buildWing(1), buildLegs()];
+    return [buildBody(), buildWing(-1), buildWing(1), buildLegs(), buildGlow()];
 }

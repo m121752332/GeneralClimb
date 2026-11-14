@@ -44,7 +44,7 @@
         3,
         3
       ],
-      "spotSec": 1.2,
+      "spotSec": 0.6,
       "diveSec": 0.8,
       "hitCols": 1,
       "hitRows": 6

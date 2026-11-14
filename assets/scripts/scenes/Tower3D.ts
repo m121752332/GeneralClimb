@@ -909,6 +909,11 @@ export class Tower3D {
         return Math.abs(angleDelta(this.camYaw, this.playerYaw)) < 1.45;
     }
 
+    /** Between the eagle's eyes while it is locked on or diving (red-eye flare), else null. */
+    eagleEyes(out: Vec3): Vec3 | null {
+        return this.eagle ? this.eagle.glareEyes(out) : null;
+    }
+
     /** Climber's head in world space, for the name tag and screen effects. */
     headWorld(out: Vec3): Vec3 {
         this.player.getWorldPosition(out);
