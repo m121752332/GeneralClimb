@@ -23,6 +23,7 @@ import { openSettings } from '../ui/SettingsPanel';
 import { playIntro } from '../ui/IntroOverlay';
 import { Toast } from '../ui/Toast';
 import { STYLE, cachedBrandIcon, drawButton, hex, loadBrandIcon, makeLabel, makeNode, roundRect } from '../ui/UiKit';
+import { clipText } from '../core/TextClip';
 import { HomeBackdrop3D } from './HomeBackdrop3D';
 
 const { ccclass } = _decorator;
@@ -35,6 +36,14 @@ const EDGE_TALL = 24;
 const EDGE_WIDE = 48;
 const MENU_W = 460;
 const CHIP_W = 310;
+/** Top-right controls: sound button size, gap between controls, and the portrait rows' tops. */
+const SOUND_SIZE = 76;
+const TOP_GAP = 14;
+const ROW1_TALL = 30;
+const ROW2_TALL = 108;
+const CHIP_H = 64;
+/** Longest e-mail shown on the account chip before it is cut with "…". */
+const CHIP_EMAIL_MAX = 26;
 const TIP_W = 660;
 /** Landscape letterbox bars (design px); portrait keeps only the bottom one. */
 const BAR_TOP = 96;
@@ -335,10 +344,11 @@ export class Home extends Component {
     }
 
     private buildCorners(): void {
-        // Sound on / off, pinned to the visible top-right corner.
-        const size = 76;
+        // Sound on / off: top-right corner on landscape; on portrait it sits on the account chip's
+        // row, right of the chip and vertically centred on it.
+        const size = SOUND_SIZE;
         const soundBtn = makeNode('Sound', this.node, size, size);
-        this.dock(soundBtn, { top: 24, right: 24 }, { top: 10, right: 24 });
+        this.dock(soundBtn, { top: ROW2_TALL + (CHIP_H - size) / 2, right: EDGE_TALL }, { top: 10, right: 24 });
         const g = soundBtn.addComponent(Graphics);
         this.drawSound = (): void => {
             const muted = settings().get().muted;
@@ -396,14 +406,14 @@ export class Home extends Component {
     }
 
     /**
-     * Account chip, right of the language pill (landscape) or under it (portrait): Google sign-in
+     * Account chip, right of the language pill (landscape) or under it, left of the sound button (portrait): Google sign-in
      * when signed out, avatar + 雲端存檔已開啟 + e-mail when signed in (opens the account panel).
      */
     private buildAccountChip(): void {
         const w = CHIP_W;
-        const h = 64;
+        const h = CHIP_H;
         const chip = makeNode('Account', this.node, w, h);
-        this.dock(chip, { top: 108, right: 24 }, { top: 16, right: 24 + 76 + 14 });
+        this.dock(chip, { top: ROW2_TALL, right: EDGE_TALL + SOUND_SIZE + TOP_GAP }, { top: 16, right: 24 + SOUND_SIZE + TOP_GAP });
         const g = chip.addComponent(Graphics);
         const avatar = makeNode('Avatar', chip, 44, 44, -w / 2 + 36, 0);
         const ag = avatar.addComponent(Graphics);
@@ -436,7 +446,7 @@ export class Home extends Component {
             initial.color = user ? Color.WHITE : hex('#4285f4');
             line1.string = user ? t('home.cloudOn') : t('home.google');
             line1.color = user ? hex('#7dffb0') : Color.WHITE;
-            line2.string = user ? (user.email || user.name) : t('home.signInSub');
+            line2.string = user ? clipText(user.email || user.name, CHIP_EMAIL_MAX) : t('home.signInSub');
         };
         this.drawChip();
         const btn = chip.addComponent(Button);
@@ -451,7 +461,7 @@ export class Home extends Component {
 
     /**
      * Top bar pill: 🌐 中文 / EN (language, saved in Settings.lang) and the fullscreen toggle; left
-     * of the account chip on landscape, left of the sound button on portrait. Switching language
+     * of the account chip on landscape, alone at the top-right corner on portrait. Switching language
      * reloads Home so every label is rebuilt.
      */
     private buildTopBar(): void {
@@ -461,7 +471,7 @@ export class Home extends Component {
         const fsW = en ? 190 : 150;
         const w = langW + fsW;
         const bar = makeNode('TopBar', this.node, w, h);
-        this.dock(bar, { top: 30, right: 24 + 76 + 14 }, { top: 16, right: 24 + 76 + 14 + CHIP_W + 14 });
+        this.dock(bar, { top: ROW1_TALL, right: EDGE_TALL }, { top: 16, right: 24 + SOUND_SIZE + TOP_GAP + CHIP_W + TOP_GAP });
         const bg = bar.addComponent(Graphics);
         roundRect(bg, w, h, h / 2, hex('#0b1024', 200), hex('#8fa6ff', 200), 2);
         bg.rect(-w / 2 + langW - 1, -h / 2 + 14, 2, h - 28);
