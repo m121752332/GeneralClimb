@@ -10,6 +10,7 @@
 import { type LeaderRow, type SummitDoc, cloudName, parseSummitDoc, planSummitSync, rankRows } from './CloudSummit';
 import { FIREBASE_CONFIG, FIREBASE_SDK_VERSION } from './FirebaseConfig';
 import { t } from './I18n';
+import { type NameError, readCachedProfile, renameWaitSec, validatePlayerName, writeCachedProfile } from './PlayerName';
 import { type Progress, markSynced, readProgress, writeProgress } from './Progress';
 import type { StorageLike } from './Settings';
 
@@ -17,6 +18,7 @@ export type AuthState = 'off' | 'loading' | 'guest' | 'signedIn' | 'error';
 
 export interface CloudUser {
     uid: string;
+    /** The player's own name (players/{uid}) if set, otherwise from the Google display name. */
     name: string;
     /** Shown in the account panel only; never written to Firestore (ADR-09). */
     email: string;
@@ -25,6 +27,28 @@ export interface CloudUser {
 const SDK_PARTS = ['app', 'auth', 'firestore'] as const;
 const SDK_TIMEOUT_MS = 8000;
 const SUMMITS = 'summits';
+const PLAYERS = 'players';
+
+export interface RenameResult {
+    ok: boolean;
+    /** Text for the panel: the error, or 「名稱已更新」. */
+    text: string;
+}
+
+/** NameError -> panel text. */
+export function nameErrorText(error: NameError): string {
+    if (error === 'empty') return t('rename.errEmpty');
+    if (error === 'chars') return t('rename.errChars');
+    return t('rename.errLength');
+}
+
+function browserStorage(): StorageLike | null {
+    try {
+        return (globalThis as { localStorage?: StorageLike }).localStorage ?? null;
+    } catch {
+        return null;
+    }
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Fb = any;
@@ -65,11 +89,20 @@ export class AuthService {
     lastSyncMs: number | null = null;
     /** levels.json cloud.minSummitSec, set by Boot once the config is loaded. */
     minSummitSec = 300;
+    /** levels.json cloud.renameCooldownSec, set by Boot once the config is loaded. */
+    renameCooldownSec = 30;
+    /** Device time of the last name change (cooldown), from the cache or Firestore. */
+    lastRenameMs: number | null = null;
 
     private fb: Fb = null;
     private ready: Promise<void> | null = null;
     private listeners = new Set<() => void>();
     private syncing: Promise<number> | null = null;
+    /** Reading players/{uid} for the signed-in user; sync waits for it so it never renames back. */
+    private profileLoad: Promise<void> = Promise.resolve();
+    /** True once players/{uid} was read (or found missing); false while offline. */
+    private profileKnown = false;
+    private renaming = false;
 
     get configured(): boolean {
         return FIREBASE_CONFIG !== null;
@@ -106,22 +139,103 @@ export class AuthService {
             await new Promise<void>((resolve) => {
                 let first = true;
                 fb.auth().onAuthStateChanged((u: Fb) => {
-                    this.user = u ? { uid: u.uid, name: cloudName(u.displayName), email: u.email ?? '' } : null;
+                    // The cached own name shows at once; players/{uid} then confirms or updates it.
+                    const cached = u ? readCachedProfile(browserStorage(), u.uid) : null;
+                    this.user = u ? { uid: u.uid, name: cached?.name ?? cloudName(u.displayName), email: u.email ?? '' } : null;
                     this.state = u ? 'signedIn' : 'guest';
+                    this.lastRenameMs = cached?.renamedAtMs ?? null;
+                    this.profileKnown = false;
                     if (!u) {
                         this.cloudCount = null;
                         this.lastSyncMs = null;
                     }
+                    this.profileLoad = u ? this.loadProfile(u.uid) : Promise.resolve();
                     this.emit();
                     if (first) {
                         first = false;
-                        resolve();
+                        // Boot waits for the name too, so Home and the climb tag show it straight away.
+                        void this.profileLoad.then(() => resolve());
                     }
                 });
             });
         } catch (err) {
             console.warn('[Auth] Firebase unavailable, playing as guest', err);
             this.state = 'error';
+            this.emit();
+        }
+    }
+
+    /** Reads players/{uid}; a saved own name replaces the Google name. Never rejects. */
+    private async loadProfile(uid: string): Promise<void> {
+        try {
+            const snap = await this.fb.firestore().collection(PLAYERS).doc(uid).get();
+            if (this.user?.uid !== uid) return;
+            this.profileKnown = true;
+            if (!snap.exists) return;
+            const check = validatePlayerName(String(snap.get('name') ?? ''));
+            if (!check.ok) return;
+            const ts = snap.get('nameUpdatedAt');
+            const at = ts && typeof ts.toMillis === 'function' ? Math.min(ts.toMillis(), Date.now()) : null;
+            this.user = { ...this.user, name: check.name };
+            this.lastRenameMs = at ?? this.lastRenameMs;
+            writeCachedProfile(browserStorage(), { uid, name: check.name, renamedAtMs: this.lastRenameMs });
+            this.emit();
+        } catch (err) {
+            console.warn('[Auth] profile read failed', err);
+        }
+    }
+
+    /** Seconds before the player may rename again. */
+    renameWait(): number {
+        return renameWaitSec(this.lastRenameMs, Date.now(), this.renameCooldownSec);
+    }
+
+    get isRenaming(): boolean {
+        return this.renaming;
+    }
+
+    /**
+     * Saves a new player name to players/{uid} and, if the player is on the leaderboard, to their
+     * own summits/{uid} name (count and time untouched). Local state only changes on success.
+     */
+    async rename(raw: string): Promise<RenameResult> {
+        const fb = this.fb;
+        const user = this.user;
+        if (!fb || !user) return { ok: false, text: t('cloud.notSignedIn') };
+        if (this.renaming) return { ok: false, text: t('rename.saving') };
+        const check = validatePlayerName(raw);
+        if (!check.ok) return { ok: false, text: nameErrorText(check.error) };
+        if (check.name === user.name) return { ok: true, text: t('rename.unchanged') };
+        const wait = this.renameWait();
+        if (wait > 0) return { ok: false, text: t('rename.tooSoon', { n: wait }) };
+        this.renaming = true;
+        this.emit();
+        try {
+            const db = fb.firestore();
+            const summitRef = db.collection(SUMMITS).doc(user.uid);
+            await db.runTransaction(async (tx: Fb) => {
+                const summit = await tx.get(summitRef);
+                tx.set(db.collection(PLAYERS).doc(user.uid), {
+                    name: check.name,
+                    nameUpdatedAt: fb.firestore.FieldValue.serverTimestamp(),
+                });
+                if (summit.exists && summit.get('name') !== check.name) tx.update(summitRef, { name: check.name });
+            });
+            const now = Date.now();
+            if (this.user?.uid === user.uid) this.user = { ...this.user, name: check.name };
+            this.lastRenameMs = now;
+            this.profileKnown = true;
+            writeCachedProfile(browserStorage(), { uid: user.uid, name: check.name, renamedAtMs: now });
+            return { ok: true, text: t('rename.done') };
+        } catch (err) {
+            console.warn('[Auth] rename failed', err);
+            const code = (err as { code?: string } | null)?.code ?? '';
+            if (code === 'unavailable' || code === 'deadline-exceeded') return { ok: false, text: t('cloud.network') };
+            // The rules refuse a rename inside the cooldown (e.g. another device just renamed).
+            if (code === 'permission-denied') return { ok: false, text: t('rename.retryLater') };
+            return { ok: false, text: t('rename.failed') };
+        } finally {
+            this.renaming = false;
             this.emit();
         }
     }
@@ -136,7 +250,8 @@ export class AuthService {
             const provider = new this.fb.auth.GoogleAuthProvider();
             provider.setCustomParameters({ prompt: 'select_account' });
             const cred = await this.fb.auth().signInWithPopup(provider);
-            return t('cloud.welcome', { name: cloudName(cred?.user?.displayName) });
+            await this.profileLoad;
+            return t('cloud.welcome', { name: this.user?.name ?? cloudName(cred?.user?.displayName) });
         } catch (err) {
             console.warn('[Auth] sign-in failed', err);
             return authErrorText(err);
@@ -172,13 +287,16 @@ export class AuthService {
         const fb = this.fb;
         const user = this.user;
         if (!fb || !user) return 0;
+        await this.profileLoad;
         const db = fb.firestore();
         const ref = db.collection(SUMMITS).doc(user.uid);
         try {
             const local: Progress = readProgress(storage);
             const result = await db.runTransaction(async (tx: Fb) => {
                 const cloud = this.toDoc(await tx.get(ref));
-                const plan = planSummitSync(local, cloud, user.name, Date.now(), this.minSummitSec);
+                // Profile unread (offline): keep the cloud name instead of renaming it back to the Google one.
+                const name = this.profileKnown ? (this.user?.name ?? user.name) : (cloud?.name ?? user.name);
+                const plan = planSummitSync(local, cloud, name, Date.now(), this.minSummitSec);
                 if (plan.write?.rename) {
                     tx.update(ref, { name: plan.write.name });
                 } else if (plan.write) {
@@ -215,6 +333,8 @@ export class AuthService {
             // the first call after the confirm button's click, so the popup is not blocked.
             await current.reauthenticateWithPopup(new fb.auth.GoogleAuthProvider());
             await fb.firestore().collection(SUMMITS).doc(user.uid).delete();
+            await fb.firestore().collection(PLAYERS).doc(user.uid).delete();
+            writeCachedProfile(browserStorage(), null);
             await current.delete();
             return t('cloud.deleted');
         } catch (err) {

@@ -66,7 +66,10 @@ export class Boot extends Component {
                     // ADR-09: load Firebase here so the sign-in popup can open straight from Home's
                     // click; it never fails Boot, guests just play on.
                     const svc = auth();
-                    if (this.config) svc.minSummitSec = this.config.cloud.minSummitSec;
+                    if (this.config) {
+                        svc.minSummitSec = this.config.cloud.minSummitSec;
+                        svc.renameCooldownSec = this.config.cloud.renameCooldownSec;
+                    }
                     await svc.init();
                     if (svc.user) return t('boot.signedIn', { name: svc.user.name, best });
                     if (svc.state === 'error') return t('boot.cloudError', { best });
