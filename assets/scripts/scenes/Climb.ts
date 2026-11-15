@@ -15,7 +15,7 @@ import { sound } from '../core/Sound';
 import { applyScreenFit } from '../core/ScreenFit';
 import { PUSH_IN_SEC, SKIP_GRACE_SEC } from '../core/Cutscene';
 import {
-    ClimbSim, Dir, NO_DIR, fallText, dirFromKeys, dirFromStick, formatClimbTime, randomSeed,
+    ClimbSim, Dir, NO_DIR, fallText, dirFromKeys, dirFromStick, clockParts, climbProgress, formatProgress, randomSeed,
 } from '../climb/ClimbCore';
 import { ROW_H } from '../climb/TowerShape';
 import { ENDING_SEC, Tower3D } from './Tower3D';
@@ -94,6 +94,20 @@ const MINIMAP_HALF_W = 34;
 const TIP_TOP = 250;
 
 /** `?practice=1` in the page URL opens practice mode directly (testing aid, like `?level=`). */
+/** Human climb time: 「03分03.4秒」, with hours once past 60 minutes (「1時02分03.4秒」). */
+function clockText(sec: number): string {
+    const { h, m, s, tenth } = clockParts(sec);
+    const vars = { h, m: String(m).padStart(2, '0'), s: String(s).padStart(2, '0'), d: tenth };
+    return t(h > 0 ? 'climb.clockH' : 'climb.clock', vars);
+}
+
+/** Label text in white with a dark outline, readable over sky and glass alike. */
+function outline(label: Label, width = 2): void {
+    label.enableOutline = true;
+    label.outlineColor = new Color(0, 0, 0, 230);
+    label.outlineWidth = width;
+}
+
 function practiceFromUrl(): boolean {
     try {
         return new URLSearchParams(globalThis.location?.search ?? '').get('practice') === '1';
@@ -129,6 +143,7 @@ export class Climb extends Component {
     private timeLabel!: Label;
     private eventLabel!: Label;
     private riskLabel!: Label;
+    private progressLabel!: Label;
     private gmLabel!: Label;
     private overlayLabel!: Label;
     private exitLabel!: Label;
@@ -391,7 +406,7 @@ export class Climb extends Component {
             }
             const from = this.cfg!.levels[this.startIndex].floorFrom;
             this.showOverlay(t('climb.fall', {
-                cause: fallText(sim.fallCause ?? 'edge'), floor: sim.runMaxFloor ?? '-', time: formatClimbTime(sim.climbSec), seed: sim.seed, from: String(from),
+                cause: fallText(sim.fallCause ?? 'edge'), floor: sim.runMaxFloor ?? '-', time: clockText(sim.climbSec), seed: sim.seed, from: String(from),
             }));
         }
     }
@@ -403,7 +418,7 @@ export class Climb extends Component {
             sound().music(null);
             sound().play('levelUp');
             this.mode = 'cleared';
-            this.showOverlay(t('climb.practiceDone', { time: formatClimbTime(sim.climbSec) }));
+            this.showOverlay(t('climb.practiceDone', { time: clockText(sim.climbSec) }));
             return;
         }
         // Clearing level N opens level N+1 in the level select, kept across reloads.
@@ -451,7 +466,7 @@ export class Climb extends Component {
             this.startIndex = 0;
             round = `\n${t('climb.summitRound', { rounds: p.rounds, summits: p.summits, next: p.rounds + 1 })}`;
         }
-        this.showOverlay(t('climb.summit', { time: formatClimbTime(sim.climbSec), seed: sim.seed, round }));
+        this.showOverlay(t('climb.summit', { time: clockText(sim.climbSec), seed: sim.seed, round }));
     }
 
     /**
@@ -728,10 +743,15 @@ export class Climb extends Component {
         this.hudG = hud.addComponent(Graphics);
         this.floorLabel = this.makeLabel('Floor', hud, 52);
         this.levelLabel = this.makeLabel('Level', hud, 24);
-        this.timeLabel = this.makeLabel('Time', hud, 30, Label.HorizontalAlign.RIGHT);
+        this.timeLabel = this.makeLabel('Time', hud, 26, Label.HorizontalAlign.RIGHT);
+        outline(this.timeLabel);
         this.eventLabel = this.makeLabel('Event', hud, 40);
-        this.riskLabel = this.makeLabel('Risk', hud, 20);
-        this.riskLabel.string = t('climb.risk');
+        this.riskLabel = this.makeLabel('Risk', hud, 22, Label.HorizontalAlign.LEFT);
+        this.riskLabel.isBold = true;
+        outline(this.riskLabel);
+        this.progressLabel = this.makeLabel('Progress', hud, 22, Label.HorizontalAlign.RIGHT);
+        this.progressLabel.isBold = true;
+        outline(this.progressLabel);
         const gm = this.makeLabel('GmBadge', hud, 24);
         gm.string = t('climb.gm');
         gm.color = hex('#ffd34a');
@@ -806,6 +826,10 @@ export class Climb extends Component {
         tower.camera.convertToUINode(tower.headWorld(this.tmpV), this.node, this.playerUi);
         this.nameTag.node.setPosition(this.playerUi.x, this.playerUi.y + 14);
         this.nameTag.node.active = tower.climberInView && !ending && this.mode !== 'intro';
+        // Signed in: the Google name (same as on the leaderboard); otherwise the default 霍將軍.
+        const account = auth();
+        const tagName = account.state === 'signedIn' && account.user ? account.user.name : t('player.name');
+        if (this.nameTag.string !== tagName) this.nameTag.string = tagName;
         // The push-in is a cutscene: no HUD until it ends.
         this.hudG.node.active = this.mode !== 'intro';
         if (this.mode === 'intro') {
@@ -927,8 +951,13 @@ export class Climb extends Component {
             ? t('climb.hudPractice', { name: levelName(shown.name) })
             : t('climb.hudLevel', { id: shown.id, name: levelName(shown.name), floors: floorsText(shown) });
         this.levelLabel.node.setPosition(0, top - 106);
-        this.timeLabel.string = formatClimbTime(sim.climbSec);
+        this.timeLabel.string = t('climb.time', { clock: clockText(sim.climbSec) });
         this.timeLabel.node.setPosition(right - 24, top - 130);
+        // Dark pill behind the clock so it reads over a bright sky.
+        const timeW = this.timeLabel.node.getComponent(UITransform)!.width + 24;
+        h.fillColor = new Color(0, 0, 0, 150);
+        h.roundRect(right - 12 - timeW, top - 150, timeW, 40, 10);
+        h.fill();
 
         // Pause button.
         h.fillColor = new Color(255, 255, 255, 60);
@@ -969,9 +998,21 @@ export class Climb extends Component {
         const mx = left + 30;
         const my = -220;
         const mh = 440;
+        const riskPct = Math.round((100 * sim.risk) / risk.max);
+        this.riskLabel.string = t('climb.riskValue', { pct: riskPct });
+        this.riskLabel.color = sim.tier === 'crisis' ? C.riskCrisis : sim.tier === 'tense' ? C.riskTense : C.text;
+        // Dark pill with a light rim around the label, then the bar's frame.
+        const riskW = this.riskLabel.node.getComponent(UITransform)!.width + 20;
+        h.fillColor = new Color(0, 0, 0, 170);
+        h.roundRect(mx - 10, my + mh + 6, riskW, 34, 10);
+        h.fill();
         h.fillColor = new Color(0, 0, 0, 220);
         h.rect(mx - 4, my - 4, 28, mh + 8);
         h.fill();
+        h.strokeColor = new Color(255, 255, 255, 170);
+        h.lineWidth = 2;
+        h.rect(mx - 5, my - 5, 30, mh + 10);
+        h.stroke();
         h.fillColor = sim.tier === 'crisis' ? C.riskCrisis : sim.tier === 'tense' ? C.riskTense : C.riskSafe;
         h.rect(mx, my, 20, mh * (sim.risk / risk.max));
         h.fill();
@@ -983,9 +1024,11 @@ export class Climb extends Component {
             h.lineTo(mx + 26, y);
         }
         h.stroke();
-        this.riskLabel.node.setPosition(mx + 10, my + mh + 22);
+        this.riskLabel.node.setPosition(mx, my + mh + 23);
         this.gmLabel.node.setPosition(0, top - 172);
-        if (!ending && !sim.practice) this.drawMiniMap(h, tower, sim, right - 52, top - 170);
+        const showMap = !ending && !sim.practice;
+        this.progressLabel.node.active = showMap;
+        if (showMap) this.drawMiniMap(h, tower, sim, right - 52, top - 170);
 
         // Practice: say what to do while an event warns and runs (not over the result screens).
         const tipKind = sim.practice && (this.mode === 'play' || this.mode === 'paused') ? kind : null;
@@ -1075,5 +1118,20 @@ export class Climb extends Component {
         h.fillColor = C.body;
         h.circle(cx, py, 5);
         h.fill();
+        // Whole-climb progress (1F to the spire tip) beside the dot.
+        const pct = formatProgress(climbProgress(this.cfg!.levels, sim.levelIndex, sim.row));
+        this.progressLabel.string = t('climb.progress', { pct });
+        const lx = cx - MINIMAP_HALF_W - 10;
+        const ly = Math.min(topY - 14, Math.max(bottom + 4, py));
+        const w = this.progressLabel.node.getComponent(UITransform)!.width + 18;
+        h.fillColor = new Color(0, 0, 0, 170);
+        h.roundRect(lx - w + 9, ly - 16, w, 32, 9);
+        h.fill();
+        h.strokeColor = C.text;
+        h.lineWidth = 2;
+        h.moveTo(lx, ly);
+        h.lineTo(cx - 7, py);
+        h.stroke();
+        this.progressLabel.node.setPosition(lx, ly);
     }
 }
