@@ -174,6 +174,7 @@ const ZH = {
     'settings.badCode': '無效指令',
     'settings.enter': '輸入',
     'settings.done': '完成',
+    'settings.version': '版本 v{version}',
 
     // Level select
     'levels.title': '選擇關卡',
@@ -378,6 +379,7 @@ const EN: Record<TextKey, string> = {
     'settings.badCode': 'Unknown code',
     'settings.enter': 'Enter',
     'settings.done': 'Done',
+    'settings.version': 'Version v{version}',
 
     'levels.title': 'Levels',
     'levels.titleGm': 'Levels · GM',

@@ -1,6 +1,7 @@
 import { Color, EditBox, Graphics, Label, Node, Slider, Sprite, UITransform } from 'cc';
 import { parseCheat } from '../core/CheatCodes';
 import { t } from '../core/I18n';
+import { APP_VERSION } from '../core/Version';
 import { settings } from '../core/Settings';
 import { STYLE, hex, makeButton, makeLabel, makeNode, makeSwitch, openModal, roundRect } from './UiKit';
 
@@ -173,5 +174,6 @@ export function openSettings(root: Node, hooks: SettingsPanelHooks): void {
     input.node.on(EditBox.EventType.EDITING_RETURN, submit);
     refreshStatus();
 
-    makeButton(p, t('settings.done'), 240, 80, STYLE.primary, modal.close, 0, -H / 2 + 70).label.fontSize = 34;
+    makeButton(p, t('settings.done'), 240, 80, STYLE.primary, modal.close, 0, -H / 2 + 84).label.fontSize = 34;
+    makeLabel(p, t('settings.version', { version: APP_VERSION }), 20, hex('#6f78a8'), { x: 0, y: -H / 2 + 26 });
 }
