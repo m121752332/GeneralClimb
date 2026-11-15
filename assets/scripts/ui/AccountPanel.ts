@@ -1,7 +1,8 @@
-import { Button, Color, Graphics, Label, Node, UITransform } from 'cc';
-import { auth } from '../core/AuthService';
+import { Button, Color, EditBox, Graphics, Label, Node, UITransform } from 'cc';
+import { auth, nameErrorText } from '../core/AuthService';
 import { formatCloudCount, formatSyncAgo, playerTag } from '../core/CloudSummit';
 import { t } from '../core/I18n';
+import { NAME_MAX, nameLength, normalizeName, validatePlayerName } from '../core/PlayerName';
 import type { StorageLike } from '../core/Settings';
 import { type ButtonStyle, STYLE, hex, makeButton, makeLabel, makeNode, openModal, roundRect } from './UiKit';
 
@@ -84,8 +85,8 @@ export function openAccountPanel(root: Node, opt: AccountPanelOptions): void {
     avatar.circle(0, 0, 46);
     avatar.fillColor = RED;
     avatar.fill();
-    makeLabel(avatar.node, Array.from(user.name)[0] ?? '霍', 44, Color.WHITE, { bold: true, y: 2 });
-    leftAlign(makeLabel(card, user.name, 30, Color.WHITE, { bold: true, y: 26 }), -W / 2 + 170);
+    const initial = makeLabel(avatar.node, Array.from(user.name)[0] ?? '霍', 44, Color.WHITE, { bold: true, y: 2 });
+    const cardName = leftAlign(makeLabel(card, user.name, 30, Color.WHITE, { bold: true, y: 26 }), -W / 2 + 170);
     leftAlign(makeLabel(card, user.email || t('account.googleAccount'), 22, hex('#c9d3ff'), { y: -8 }), -W / 2 + 170);
     const badge = makeNode('Badge', card, 110, 34, -W / 2 + 225, -44);
     roundRect(badge.addComponent(Graphics), 110, 34, 17, hex('#ffffff', 235), undefined);
@@ -96,8 +97,16 @@ export function openAccountPanel(root: Node, opt: AccountPanelOptions): void {
     y -= 120;
     const dot = makeNode('Dot', p, 0, 0, x0 + 8, y).addComponent(Graphics);
     const syncText = leftAlign(makeLabel(p, '', 24, hex('#e8ecff'), { y }), x0 + 26);
+    let rowName: Label | null = null;
     const refresh = (): void => {
         if (!syncText.isValid) return;
+        // A rename (here or on another device) shows everywhere in the panel at once.
+        const u = svc.user;
+        if (u) {
+            initial.string = Array.from(u.name)[0] ?? '霍';
+            cardName.string = u.name;
+            if (rowName) rowName.string = `${u.name}#${playerTag(u.uid)}`;
+        }
         const synced = svc.lastSyncMs !== null;
         dot.clear();
         dot.circle(0, 0, 8);
@@ -125,7 +134,16 @@ export function openAccountPanel(root: Node, opt: AccountPanelOptions): void {
     const row = makeNode('NameRow', p, W - 60, 72, 0, y);
     roundRect(row.addComponent(Graphics), W - 60, 72, 16, hex('#1a2248'), undefined);
     leftAlign(makeLabel(row, t('account.name'), 24, hex('#c9d3ff'), {}), -W / 2 + 50);
-    rightAlign(makeLabel(row, `${user.name}#${playerTag(user.uid)}`, 24, Color.WHITE, { bold: true }), W / 2 - 50);
+    // Name + tag, shrunk to fit between the caption and the 修改 button (12 Chinese characters + tag).
+    rowName = rightAlign(makeLabel(row, `${user.name}#${playerTag(user.uid)}`, 24, Color.WHITE, { bold: true }), W / 2 - 150);
+    rowName.overflow = Label.Overflow.SHRINK;
+    rowName.node.getComponent(UITransform)!.setContentSize(330, 40);
+    rowName.horizontalAlign = Label.HorizontalAlign.RIGHT;
+    makeButton(row, t('account.rename'), 96, 50, { ...STYLE.secondary, fontSize: 22, radius: 14 }, () => openRename(root, opt), W / 2 - 88, 0);
+    // The whole row is a tap target too.
+    const rowBtn = row.addComponent(Button);
+    rowBtn.transition = Button.Transition.NONE;
+    row.on(Button.EventType.CLICK, () => openRename(root, opt));
     y -= 92;
     makeButton(p, t('account.signOut'), W - 60, 76, { ...STYLE.secondary, fontSize: 28 }, () => {
         modal.close();
@@ -141,6 +159,116 @@ export function openAccountPanel(root: Node, opt: AccountPanelOptions): void {
     makeLabel(del.node, t('account.deleteSub'), 20, hex('#ffb3a8', 220), { y: -20 });
 
     makePolicyLinks(p, -H / 2 + 44);
+}
+
+/** Single-line name field; the background is a sibling Graphics since EditBox owns a Sprite. */
+function makeNameInput(parent: Node, w: number, h: number, x: number, y: number, value: string): EditBox {
+    const bg = makeNode('NameBg', parent, w, h, x, y).addComponent(Graphics);
+    roundRect(bg, w, h, 14, hex('#0b1024'), hex('#8fa6ff', 200), 2);
+    const node = makeNode('NameInput', parent, w - 16, h, x, y);
+    // Configure while inactive: the web implementation picks <input> vs <textarea> in onLoad.
+    node.active = false;
+    const box = node.addComponent(EditBox);
+    box.inputMode = EditBox.InputMode.SINGLE_LINE;
+    box.inputFlag = EditBox.InputFlag.DEFAULT;
+    box.returnType = EditBox.KeyboardReturnType.DONE;
+    // Room for spaces the trim removes; validation enforces NAME_MAX.
+    box.maxLength = NAME_MAX + 8;
+    box.placeholder = t('rename.placeholder');
+    for (const l of [box.textLabel, box.placeholderLabel]) {
+        if (!l) continue;
+        l.fontSize = 30;
+        l.lineHeight = h;
+    }
+    box.textLabel!.color = Color.WHITE;
+    box.placeholderLabel!.color = hex('#6f78a8');
+    node.active = true;
+    for (const l of [box.textLabel, box.placeholderLabel]) {
+        if (!l) continue;
+        const tr = l.node.getComponent(UITransform)!;
+        tr.setAnchorPoint(0.5, 0.5);
+        tr.setContentSize(w - 32, h);
+        l.node.setPosition(0, 0);
+        l.overflow = Label.Overflow.CLAMP;
+        l.horizontalAlign = Label.HorizontalAlign.LEFT;
+        l.verticalAlign = Label.VerticalAlign.CENTER;
+    }
+    box.string = value;
+    return box;
+}
+
+/**
+ * 「修改名稱」: only the name before 「#」 is editable, the tag stays. Errors show inside the
+ * dialog; while saving the buttons are locked, and a failed save puts the old name back.
+ */
+function openRename(root: Node, opt: AccountPanelOptions): void {
+    const svc = auth();
+    const user = svc.user;
+    if (!user) return;
+    const w = 600;
+    const h = 560;
+    const modal = openModal(root, t('rename.title'), w, h);
+    const p = modal.panel;
+
+    makeLabel(p, t('rename.hint'), 21, hex('#c9d3ff'), { y: h / 2 - 160, lineHeight: 32 });
+    const tag = `#${playerTag(user.uid)}`;
+    const box = makeNameInput(p, 380, 76, -60, 30, user.name);
+    leftAlign(makeLabel(p, tag, 30, hex('#9aa0bf'), { bold: true, y: 30 }), 150);
+    const count = rightAlign(makeLabel(p, '', 22, hex('#9aa0bf'), { y: -38 }), 130);
+    const error = makeLabel(p, '', 22, hex('#ff8a7a'), { y: -92, bold: true });
+
+    const update = (): void => {
+        const n = nameLength(normalizeName(box.string));
+        count.string = t('rename.count', { n, max: NAME_MAX });
+        count.color = n > NAME_MAX ? hex('#ff8a7a') : hex('#9aa0bf');
+    };
+    update();
+    box.node.on(EditBox.EventType.TEXT_CHANGED, () => {
+        error.string = '';
+        update();
+    });
+
+    let busy = false;
+    const save = makeButton(p, t('rename.save'), 220, 76, STYLE.primary, () => {
+        if (busy) return;
+        const check = validatePlayerName(box.string);
+        if (!check.ok) {
+            error.string = nameErrorText(check.error);
+            return;
+        }
+        const wait = svc.renameWait();
+        if (check.name !== user.name && wait > 0) {
+            error.string = t('rename.tooSoon', { n: wait });
+            return;
+        }
+        busy = true;
+        error.string = '';
+        save.label.string = t('rename.saving');
+        box.enabled = false;
+        void svc.rename(check.name).then((res) => {
+            busy = false;
+            if (!p.isValid) return;
+            save.label.string = t('rename.save');
+            box.enabled = true;
+            if (res.ok) {
+                modal.close();
+                opt.toast(res.text);
+                return;
+            }
+            // Nothing was saved: show why and put the current name back.
+            error.string = res.text;
+            box.string = svc.user?.name ?? user.name;
+            update();
+        });
+    }, 125, -h / 2 + 76);
+    save.label.fontSize = 32;
+    makeButton(p, t('rename.cancel'), 220, 76, STYLE.secondary, () => {
+        if (!busy) modal.close();
+    }, -125, -h / 2 + 76);
+    box.node.on(EditBox.EventType.EDITING_RETURN, () => {
+        // Enter / 完成 on the keyboard saves too.
+        save.node.emit(Button.EventType.CLICK);
+    });
 }
 
 function confirmDelete(root: Node, opt: AccountPanelOptions, closeAccount: () => void): void {

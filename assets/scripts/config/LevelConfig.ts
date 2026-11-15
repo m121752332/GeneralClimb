@@ -70,6 +70,8 @@ export interface CloudConfig {
     minSummitSec: number;
     /** Rows shown on the leaderboard. */
     leaderboardSize: number;
+    /** Shortest gap between two player-name changes; must match config/firestore.rules. */
+    renameCooldownSec: number;
 }
 
 export interface DevConfig {
@@ -385,6 +387,7 @@ function checkCloud(c: Checker, root: Obj): void {
     const k = c.obj(root, 'cloud', '$');
     c.num(k, 'minSummitSec', '$.cloud', { min: 1, int: true });
     c.num(k, 'leaderboardSize', '$.cloud', { min: 1, max: 100, int: true });
+    c.num(k, 'renameCooldownSec', '$.cloud', { min: 0, max: 86400, int: true });
 }
 
 function checkCrowd(c: Checker, root: Obj): void {

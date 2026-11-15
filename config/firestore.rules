@@ -5,8 +5,31 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    // 玩家自己的資料與每局紀錄
-    match /players/{uid}/{doc=**} {
+    // 玩家自訂名稱：{ name, nameUpdatedAt }，只能讀寫自己的。
+    // 名稱 NAME_MIN–NAME_MAX 字（core/PlayerName.ts），只能是中英文、數字、底線、空白、連字號，
+    // 頭尾不能是空白；改名之間至少隔 RENAME_COOLDOWN_SEC 秒（levels.json cloud.renameCooldownSec）。
+    // tests/player-name.test.ts 會檢查這裡的數字與程式一致。
+    match /players/{uid} {
+      function validProfile(d) {
+        return d.keys().hasOnly(['name', 'nameUpdatedAt'])
+          && d.name is string
+          && d.name.size() >= 2 && d.name.size() <= 12 // player name
+          && d.name.matches('^[\\p{Han}A-Za-z0-9_-]([\\p{Han}A-Za-z0-9_ -]*[\\p{Han}A-Za-z0-9_-])?$')
+          && d.nameUpdatedAt == request.time;
+      }
+
+      allow read: if signedInAs(uid);
+      allow create: if signedInAs(uid) && validProfile(request.resource.data);
+      // 改名只能動名稱與時間，且距上次改名至少 30 秒。
+      allow update: if signedInAs(uid)
+        && validProfile(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'nameUpdatedAt'])
+        && request.time >= resource.data.nameUpdatedAt + duration.value(30, 's');
+      allow delete: if signedInAs(uid);
+    }
+
+    // 玩家自己的每局紀錄（players/{uid} 底下的子集合）
+    match /players/{uid}/{sub}/{doc=**} {
       allow read, write: if signedInAs(uid);
     }
 
@@ -41,7 +64,7 @@ service cloud.firestore {
       allow update: if signedInAs(uid)
         && validShape(request.resource.data)
         && (
-          // 只改名：次數與時間都不動
+          // 只改名（Google 名稱或玩家自訂名稱）：次數與時間都不動
           (request.resource.data.count == resource.data.count
             && request.resource.data.updatedAt == resource.data.updatedAt)
           ||
