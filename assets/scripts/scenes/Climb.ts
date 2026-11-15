@@ -88,6 +88,8 @@ function floorsText(l: { floors: string; floorFrom: number | null; floorTo: numb
 /** Mini map (top right): height in pixels and the panel's half width. */
 const MINIMAP_H = 300;
 const MINIMAP_HALF_W = 34;
+/** Risk meter and its label pill: same width, wide enough for 「100%」. */
+const RISK_W = 72;
 
 /** Event icon letters and the practice-mode tips (GDD 7) are core/I18n `event.*` and `tip.*`. */
 /** Practice tip sits under the HUD band. */
@@ -995,37 +997,37 @@ export class Climb extends Component {
         }
 
         // Risk meter (left, vertical).
-        const mx = left + 30;
+        // The label pill (「風險」 over 「20%」) and the bar share one width, so a full bar
+        // lines up with the pill above it.
+        const rw = RISK_W;
+        const rx = left + 12;
         const my = -220;
         const mh = 440;
         const riskPct = Math.round((100 * sim.risk) / risk.max);
         this.riskLabel.string = t('climb.riskValue', { pct: riskPct });
         this.riskLabel.color = sim.tier === 'crisis' ? C.riskCrisis : sim.tier === 'tense' ? C.riskTense : C.text;
-        // Dark pill with a light rim around the label, then the bar's frame.
-        // Two lines (「風險」 over 「20%」) centred above the bar.
-        const riskW = Math.max(64, this.riskLabel.node.getComponent(UITransform)!.width + 16);
         h.fillColor = new Color(0, 0, 0, 170);
-        h.roundRect(mx + 10 - riskW / 2, my + mh + 8, riskW, 64, 10);
+        h.roundRect(rx, my + mh + 10, rw, 64, 10);
         h.fill();
-        h.fillColor = new Color(0, 0, 0, 220);
-        h.rect(mx - 4, my - 4, 28, mh + 8);
+        h.fillColor = new Color(0, 0, 0, 200);
+        h.roundRect(rx, my - 4, rw, mh + 8, 8);
         h.fill();
         h.strokeColor = new Color(255, 255, 255, 170);
         h.lineWidth = 2;
-        h.rect(mx - 5, my - 5, 30, mh + 10);
+        h.roundRect(rx, my - 4, rw, mh + 8, 8);
         h.stroke();
         h.fillColor = sim.tier === 'crisis' ? C.riskCrisis : sim.tier === 'tense' ? C.riskTense : C.riskSafe;
-        h.rect(mx, my, 20, mh * (sim.risk / risk.max));
+        h.rect(rx + 5, my, rw - 10, mh * Math.min(1, sim.risk / risk.max));
         h.fill();
         h.strokeColor = C.text;
         h.lineWidth = 2;
         for (const v of [risk.tense, risk.crisis]) {
             const y = my + mh * (v / risk.max);
-            h.moveTo(mx - 6, y);
-            h.lineTo(mx + 26, y);
+            h.moveTo(rx, y);
+            h.lineTo(rx + rw, y);
         }
         h.stroke();
-        this.riskLabel.node.setPosition(mx + 10, my + mh + 40);
+        this.riskLabel.node.setPosition(rx + rw / 2, my + mh + 42);
         this.gmLabel.node.setPosition(0, top - 172);
         const showMap = !ending && !sim.practice;
         this.progressLabel.node.active = showMap;
