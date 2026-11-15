@@ -96,9 +96,10 @@ test('twinkle and tip light', () => {
     assert.equal(tipLightOn(1.2), false);
 });
 
-test('landscape screens turn the camera so the tower stands left of the menu', () => {
-    assert.equal(homeYawShift(720 / 1280), 0);
-    assert.equal(homeYawShift(1), 0);
+test('the camera turns so the tower stands right of the left menu column', () => {
+    const tall = homeYawShift(720 / 1280);
     const wide = homeYawShift(16 / 9);
+    assert.ok(tall > 0.1 && tall < 0.4);
     assert.ok(wide > 0.2 && wide < 0.8);
+    assert.ok(wide > tall);
 });

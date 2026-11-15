@@ -1,6 +1,6 @@
 import {
     _decorator, Button, Color, Component, Graphics, Label, Mask, Node, Sprite, SpriteFrame,
-    UITransform, Widget, assetManager, director,
+    UITransform, Widget, assetManager, director, view,
 } from 'cc';
 import { LevelLoader } from '../config/LevelLoader';
 import type { LevelConfig } from '../config/LevelConfig';
@@ -22,16 +22,60 @@ import { openLevelSelect } from '../ui/LevelSelectPanel';
 import { openSettings } from '../ui/SettingsPanel';
 import { playIntro } from '../ui/IntroOverlay';
 import { Toast } from '../ui/Toast';
-import { STYLE, cachedBrandIcon, hex, loadBrandIcon, makeButton, makeLabel, makeNode, roundRect } from '../ui/UiKit';
+import { STYLE, cachedBrandIcon, drawButton, hex, loadBrandIcon, makeLabel, makeNode, roundRect } from '../ui/UiKit';
 import { HomeBackdrop3D } from './HomeBackdrop3D';
 
 const { ccclass } = _decorator;
 
 const CLIMB_SCENE = 'Climb';
 const HOME_SCENE = 'Home';
-const ICON_SIZE = 144;
+const ICON_SIZE = 104;
+/** Gap to the visible screen edge on portrait (tall) and landscape (wide) screens. */
+const EDGE_TALL = 24;
+const EDGE_WIDE = 48;
+const MENU_W = 460;
+const CHIP_W = 310;
+const TIP_W = 660;
+/** Landscape letterbox bars (design px); portrait keeps only the bottom one. */
+const BAR_TOP = 96;
+const BAR_BOTTOM = 72;
+/** Wider than any visible width, so the bars run edge to edge. */
+const BAR_SPAN = 8000;
 
-/** Main menu (GDD §7): title, start, level select, practice, settings, sign-in, best record. */
+/** Widget offsets from the visible edges; an edge left out is not aligned. */
+interface Dock {
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+    centerX?: boolean;
+}
+
+function applyDock(w: Widget, d: Dock): void {
+    w.isAlignTop = d.top !== undefined;
+    w.top = d.top ?? 0;
+    w.isAlignBottom = d.bottom !== undefined;
+    w.bottom = d.bottom ?? 0;
+    w.isAlignLeft = d.left !== undefined;
+    w.left = d.left ?? 0;
+    w.isAlignRight = d.right !== undefined;
+    w.right = d.right ?? 0;
+    w.isAlignHorizontalCenter = !!d.centerX;
+    w.horizontalCenter = 0;
+    w.updateAlignment();
+}
+
+function leftAlign(label: Label, x: number): Label {
+    label.node.getComponent(UITransform)!.setAnchorPoint(0, 0.5);
+    label.node.setPosition(x, label.node.position.y);
+    return label;
+}
+
+/**
+ * Main menu (GDD §7): logo and title top-left, the menu column on the left (start, level select,
+ * practice, leaderboard, settings, best record), language / fullscreen pill, account chip and sound
+ * top-right, a tip and the place caption along the bottom; the 3D 101 stands right of the menu.
+ */
 @ccclass('Home')
 export class Home extends Component {
     private toast!: Toast;
@@ -41,7 +85,6 @@ export class Home extends Component {
     private drawFullscreen: (() => void) | null = null;
     private offFullscreen: (() => void) | null = null;
     private roundLabel: Label | null = null;
-    private googleLabel: Label | null = null;
     private offAuth: (() => void) | null = null;
 
     onLoad(): void {
@@ -51,11 +94,17 @@ export class Home extends Component {
 
     start(): void {
         applyScreenFit();
-        HomeBackdrop3D.mount(this.node);
+        const caption = HomeBackdrop3D.mount(this.node);
+        this.buildBars(caption);
         this.buildTitle();
         this.buildMenu();
         this.buildCorners();
         this.buildTopBar();
+        this.buildAccountChip();
+        this.buildBottom(caption);
+        this.relayout();
+        view.on('canvas-resize', this.onResize);
+        view.on('design-resolution-changed', this.onResize);
         this.toast = new Toast(this.node);
         this.syncDevMode();
         sound().music('home');
@@ -95,7 +144,7 @@ export class Home extends Component {
         const uid = svc.user?.uid ?? null;
         if (uid && uid !== this.lastUid) void svc.syncSummits(this.storage());
         this.lastUid = uid;
-        if (this.googleLabel?.isValid) this.googleLabel.string = svc.user ? svc.user.name : t('home.google');
+        this.drawChip?.();
         if (this.roundLabel?.isValid) {
             const cloud = svc.user ? formatCloudCount(svc.cloudCount) : '';
             this.roundLabel.string = formatRound(readProgress(this.storage())) + (cloud ? ` · ${cloud}` : '');
@@ -114,16 +163,69 @@ export class Home extends Component {
 
     private version!: Label;
     private versionFailed = false;
+    /** Widgets whose offsets differ between portrait (tall) and landscape (wide) screens. */
+    private readonly docked: { widget: Widget; tall: Dock; wide: Dock }[] = [];
+    private layoutWide: boolean | null = null;
+    private tipLabel: Label | null = null;
+    private drawChip: (() => void) | null = null;
+    private bars: { node: Node; g: Graphics; tall: number; wide: number }[] = [];
 
+    /** Pins `node` to the visible edges; relayout() switches between the tall and wide offsets. */
+    private dock(node: Node, tall: Dock, wide: Dock): void {
+        const widget = node.getComponent(Widget) ?? node.addComponent(Widget);
+        this.docked.push({ widget, tall, wide });
+    }
+
+    private readonly onResize = (): void => {
+        this.scheduleOnce(() => this.relayout(), 0);
+    };
+
+    /** Portrait: everything stacks down the left; landscape: title and menu on the left, 101 on the right. */
+    private relayout(): void {
+        const size = view.getVisibleSize();
+        const wide = size.width > size.height;
+        if (wide === this.layoutWide) return;
+        this.layoutWide = wide;
+        for (const b of this.bars) {
+            const h = wide ? b.wide : b.tall;
+            b.node.active = h > 0;
+            b.node.getComponent(UITransform)!.setContentSize(BAR_SPAN, h);
+            b.g.clear();
+            b.g.rect(-BAR_SPAN / 2, -h / 2, BAR_SPAN, h);
+            b.g.fillColor = hex('#06060b', 238);
+            b.g.fill();
+        }
+        for (const d of this.docked) applyDock(d.widget, wide ? d.wide : d.tall);
+        if (this.tipLabel) this.tipLabel.horizontalAlign = wide ? Label.HorizontalAlign.LEFT : Label.HorizontalAlign.CENTER;
+    }
+
+    /**
+     * Letterbox bars: a dark strip along the top (behind the language pill, account chip and sound
+     * button) and the bottom (behind the tip and the place caption). Landscape only at the top, so the
+     * portrait screen keeps the spire; drawn under the caption, over the 3D backdrop.
+     */
+    private buildBars(caption: Node): void {
+        const make = (name: string, tall: number, wide: number, edge: Dock): void => {
+            const node = makeNode(name, this.node, BAR_SPAN, 0);
+            node.setSiblingIndex(caption.getSiblingIndex());
+            this.bars.push({ node, g: node.addComponent(Graphics), tall, wide });
+            this.dock(node, { ...edge, centerX: true }, { ...edge, centerX: true });
+        };
+        make('TopBar', 0, BAR_TOP, { top: 0 });
+        make('BottomBar', 118, BAR_BOTTOM, { bottom: 0 });
+    }
+
+    /** Top-left: the GCR logo, then the title and the GENERAL CLIMB line beside it (landscape) or under it (portrait). */
     private buildTitle(): void {
-        const icon = makeNode('Icon', this.node, ICON_SIZE, ICON_SIZE, 0, 520);
+        const icon = makeNode('Icon', this.node, ICON_SIZE + 12, ICON_SIZE + 12);
+        this.dock(icon, { left: EDGE_TALL, top: 22 }, { left: EDGE_WIDE, top: BAR_TOP + 22 });
         const frame = icon.addComponent(Graphics);
-        roundRect(frame, ICON_SIZE + 12, ICON_SIZE + 12, 30, hex('#fff1c2'), hex('#ff5a3c'), 4);
+        roundRect(frame, ICON_SIZE + 12, ICON_SIZE + 12, 24, hex('#fff1c2'), hex('#ff5a3c'), 4);
         const clip = makeNode('Clip', icon, ICON_SIZE, ICON_SIZE);
         const mask = clip.addComponent(Mask);
         mask.type = Mask.Type.GRAPHICS_STENCIL;
         const shape = clip.getComponent(Graphics)!;
-        shape.roundRect(-ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE, ICON_SIZE, 24);
+        shape.roundRect(-ICON_SIZE / 2, -ICON_SIZE / 2, ICON_SIZE, ICON_SIZE, 18);
         shape.fill();
         const art = makeNode('Art', clip, ICON_SIZE, ICON_SIZE);
         const show = (sf: SpriteFrame): void => {
@@ -138,67 +240,105 @@ export class Home extends Component {
         if (cached) show(cached);
         else loadBrandIcon().then(show).catch((err: unknown) => console.warn('GCR icon not loaded', err));
 
-        makeLabel(this.node, t('game.title'), lang() === 'en' ? 54 : 68, Color.WHITE, {
-            y: 375, bold: true, outline: hex('#2a0d3a'), outlineWidth: 5, shadow: hex('#ff5a3c', 200),
-        });
-        makeLabel(this.node, 'GENERAL CLIMB · GCR', 26, hex('#ffc94a'), {
-            y: 305, bold: true, outline: hex('#2a0d3a'), outlineWidth: 2,
-        });
+        const title = makeNode('Title', this.node, 640, 120);
+        title.getComponent(UITransform)!.setAnchorPoint(0, 1);
+        this.dock(title, { left: EDGE_TALL, top: 186 }, { left: EDGE_WIDE + ICON_SIZE + 36, top: BAR_TOP + 26 });
+        leftAlign(makeLabel(title, t('game.title'), lang() === 'en' ? 46 : 60, Color.WHITE, {
+            y: -40, bold: true, outline: hex('#2a0d3a'), outlineWidth: 5, shadow: hex('#ff5a3c', 200),
+        }), 0);
+        leftAlign(makeLabel(title, 'GENERAL CLIMB · GCR', 24, hex('#ffc94a'), {
+            y: -98, bold: true, outline: hex('#2a0d3a'), outlineWidth: 2,
+        }), 0);
+
+        // "GM" badge while developer mode (金手指) is on, after the GENERAL CLIMB line.
+        const gm = makeNode('GmBadge', title, 76, 40, 350, -98);
+        roundRect(gm.addComponent(Graphics), 76, 40, 20, hex('#ffc94a'), hex('#fff1c2'), 3);
+        makeLabel(gm, 'GM', 24, hex('#3a2400'), { bold: true, y: 1 });
+        gm.active = false;
+        this.gmBadge = gm;
     }
 
+    /**
+     * Left menu column: one dark panel of stacked items (label + small subtitle), 開始遊戲 highlighted
+     * on top, then 周目 and the best record at the bottom.
+     */
     private buildMenu(): void {
-        const best = makeNode('Best', this.node, 0, 0, 0, 0);
-        const bestBg = best.addComponent(Graphics);
-        roundRect(bestBg, 380, 54, 27, hex('#0b1024', 190), hex('#ffc94a', 160), 2);
-        makeLabel(best, formatBest(readLocalBest(this.storage())), 26, hex('#ffe2a0'), { bold: true });
-        // 周目 and total summits (core/Progress); syncAccount adds the cloud total when signed in.
-        this.roundLabel = makeLabel(this.node, formatRound(readProgress(this.storage())), 24, hex('#c9d3ff'), {
-            y: 52, bold: true, outline: hex('#0b1024'), outlineWidth: 2,
-        });
+        const pad = 18;
+        const gap = 10;
+        const startH = 112;
+        const itemH = 92;
+        const statsH = 104;
+        const w = MENU_W;
+        const h = pad + startH + 4 * (itemH + gap) + gap + statsH + pad;
+        const menu = makeNode('Menu', this.node, w, h);
+        this.dock(menu, { left: EDGE_TALL, top: 320 }, { left: EDGE_WIDE, top: BAR_TOP + 186 });
+        roundRect(menu.addComponent(Graphics), w, h, 26, hex('#0b1024', 205), hex('#8fa6ff', 120), 2);
 
-        makeButton(this.node, t('home.start'), 460, 112, STYLE.primary, () => this.startGame(0), 0, -110);
-
-        const colX = 158;
-        const btnW = 296;
-        const btnH = 86;
-        makeButton(this.node, t('home.levels'), btnW, btnH, STYLE.secondary, () => this.openLevels(), -colX, -245);
-        makeButton(this.node, t('home.practice'), btnW, btnH, STYLE.secondary, () => this.startPractice(), colX, -245);
-        makeButton(this.node, t('home.settings'), btnW, btnH, STYLE.secondary, () => openSettings(this.node, {
+        let y = h / 2 - pad;
+        const add = (label: string, sub: string, ih: number, primary: boolean, onClick: () => void): void => {
+            this.menuItem(menu, label, sub, w - 2 * pad, ih, primary, onClick, y - ih / 2);
+            y -= ih + gap;
+        };
+        add(t('home.start'), t('home.startSub'), startH, true, () => this.startGame(0));
+        add(t('home.levels'), t('home.levelsSub'), itemH, false, () => this.openLevels());
+        add(t('home.practice'), t('home.practiceSub'), itemH, false, () => this.startPractice());
+        add(t('home.leaderboard'), t('home.leaderboardSub'), itemH, false, () => openLeaderboard(
+            this.node, this.config?.cloud.leaderboardSize ?? 20, () => this.toast.hide(),
+        ));
+        add(t('home.settings'), t('home.settingsSub'), itemH, false, () => openSettings(this.node, {
             onChange: () => {
                 this.drawSound?.();
                 this.syncDevMode();
             },
             toast: (text) => this.toast.show(text),
             onClose: () => this.toast.hide(),
-        }), -colX, -345);
-        const google = makeButton(this.node, t('home.google'), btnW, btnH, STYLE.light, () => this.onGoogle(), colX, -345);
-        google.label.node.setPosition(18, 3);
-        google.label.overflow = Label.Overflow.SHRINK;
-        google.label.node.getComponent(UITransform)!.setContentSize(btnW - 100, btnH - 10);
-        this.googleLabel = google.label;
-        const g = makeNode('G', google.node, 0, 0, -btnW / 2 + 40, 3).addComponent(Graphics);
-        g.circle(0, 0, 20);
-        g.fillColor = Color.WHITE;
-        g.fill();
-        g.lineWidth = 3;
-        g.strokeColor = hex('#d0d4e4');
-        g.stroke();
-        makeLabel(g.node, 'G', 26, hex('#4285f4'), { bold: true, y: 1 });
+        }));
 
-        makeButton(this.node, t('home.leaderboard'), btnW * 2 + 20, 80, STYLE.gold, () => openLeaderboard(
-            this.node, this.config?.cloud.leaderboardSize ?? 20, () => this.toast.hide(),
-        ), 0, -445);
+        // 周目 and total summits (core/Progress); syncAccount adds the cloud total when signed in.
+        y -= gap;
+        this.roundLabel = makeLabel(menu, formatRound(readProgress(this.storage())), 24, hex('#c9d3ff'), {
+            y: y - 20, bold: true,
+        });
+        const best = makeNode('Best', menu, w - 2 * pad, 50, 0, y - 70);
+        roundRect(best.addComponent(Graphics), w - 2 * pad, 50, 25, hex('#141a36', 230), hex('#ffc94a', 160), 2);
+        makeLabel(best, formatBest(readLocalBest(this.storage())), 24, hex('#ffe2a0'), { bold: true });
+    }
+
+    private menuItem(parent: Node, label: string, sub: string, w: number, h: number, primary: boolean, onClick: () => void, y: number): void {
+        const node = makeNode(`Item ${label}`, parent, w, h, 0, y);
+        const g = node.addComponent(Graphics);
+        if (primary) {
+            drawButton(g, w, h, { ...STYLE.primary, radius: 20 });
+        } else {
+            roundRect(g, w, h, 18, hex('#1a2350', 230), hex('#8fa6ff', 90), 2);
+            g.roundRect(-w / 2 + 12, -h / 2 + 22, 6, h - 44, 3);
+            g.fillColor = hex('#8fa6ff', 200);
+            g.fill();
+        }
+        const x0 = -w / 2 + (primary ? 30 : 34);
+        leftAlign(makeLabel(node, label, primary ? 40 : 32, Color.WHITE, {
+            bold: true, y: primary ? 16 : 13, outline: primary ? hex('#7a1a10') : undefined, outlineWidth: 3,
+        }), x0);
+        leftAlign(makeLabel(node, sub, primary ? 20 : 18, primary ? hex('#ffe2d0') : hex('#9aa6d8'), {
+            bold: true, y: primary ? -26 : -22,
+        }), x0);
+        makeLabel(node, '›', 48, primary ? Color.WHITE : hex('#8fa6ff'), { x: w / 2 - 32, y: primary ? 6 : 4, bold: true });
+        const button = node.addComponent(Button);
+        button.target = node;
+        button.transition = Button.Transition.SCALE;
+        button.zoomScale = 0.96;
+        button.duration = 0.08;
+        node.on(Button.EventType.CLICK, () => {
+            sound().play('click');
+            onClick();
+        });
     }
 
     private buildCorners(): void {
         // Sound on / off, pinned to the visible top-right corner.
         const size = 76;
         const soundBtn = makeNode('Sound', this.node, size, size);
-        const w = soundBtn.addComponent(Widget);
-        w.isAlignTop = true;
-        w.isAlignRight = true;
-        w.top = 24;
-        w.right = 24;
+        this.dock(soundBtn, { top: 24, right: 24 }, { top: 10, right: 24 });
         const g = soundBtn.addComponent(Graphics);
         this.drawSound = (): void => {
             const muted = settings().get().muted;
@@ -235,34 +375,84 @@ export class Home extends Component {
             this.toast.show(t(muted ? 'home.muted' : 'home.unmuted'), 1);
         });
 
-        // "GM" badge while developer mode (金手指) is on, pinned to the visible top-left corner.
-        const gm = makeNode('GmBadge', this.node, 96, 52);
-        const gw = gm.addComponent(Widget);
-        gw.isAlignTop = true;
-        gw.isAlignLeft = true;
-        gw.top = 36;
-        gw.left = 24;
-        roundRect(gm.addComponent(Graphics), 96, 52, 26, hex('#ffc94a'), hex('#fff1c2'), 3);
-        makeLabel(gm, 'GM', 30, hex('#3a2400'), { bold: true, y: 1 });
-        gm.active = false;
-        this.gmBadge = gm;
-
-        // Version, pinned to the visible bottom-right corner.
+        // Version, bottom-right above the place caption (HomeBackdrop3D) and, on portrait, the tip line.
         const ver = makeNode('Version', this.node, 320, 40);
-        const vw = ver.addComponent(Widget);
-        vw.isAlignBottom = true;
-        vw.isAlignRight = true;
-        // Above the place caption (HomeBackdrop3D).
-        vw.bottom = 72;
-        vw.right = 20;
+        this.dock(ver, { bottom: 128, right: 20 }, { bottom: BAR_BOTTOM + 8, right: EDGE_TALL });
         this.version = makeLabel(ver, 'levels.json …', 22, hex('#e8ecff', 220), { outline: hex('#0b1024'), outlineWidth: 2 });
         this.version.node.getComponent(UITransform)!.setAnchorPoint(1, 0.5);
         this.version.node.setPosition(160, 0);
     }
 
+    /** Bottom bar: a play tip (bottom-left on landscape, centred above the caption on portrait) and the place caption. */
+    private buildBottom(caption: Node): void {
+        this.dock(caption, { bottom: 14, centerX: true }, { bottom: 12, right: EDGE_TALL });
+        const box = makeNode('Tip', this.node, TIP_W, 36);
+        this.dock(box, { bottom: 76, centerX: true }, { bottom: 18, left: EDGE_WIDE });
+        const tip = makeLabel(box, t('home.tip'), 20, hex('#f6dccf', 235), { outline: hex('#2a1a2e', 200), outlineWidth: 2 });
+        tip.overflow = Label.Overflow.SHRINK;
+        tip.node.getComponent(UITransform)!.setContentSize(TIP_W, 36);
+        tip.verticalAlign = Label.VerticalAlign.CENTER;
+        this.tipLabel = tip;
+    }
+
     /**
-     * Top bar pill, left of the sound button: 🌐 中文 / EN (language, saved in Settings.lang) and
-     * the fullscreen toggle. Switching language reloads Home so every label is rebuilt.
+     * Account chip, right of the language pill (landscape) or under it (portrait): Google sign-in
+     * when signed out, avatar + 雲端存檔已開啟 + e-mail when signed in (opens the account panel).
+     */
+    private buildAccountChip(): void {
+        const w = CHIP_W;
+        const h = 64;
+        const chip = makeNode('Account', this.node, w, h);
+        this.dock(chip, { top: 108, right: 24 }, { top: 16, right: 24 + 76 + 14 });
+        const g = chip.addComponent(Graphics);
+        const avatar = makeNode('Avatar', chip, 44, 44, -w / 2 + 36, 0);
+        const ag = avatar.addComponent(Graphics);
+        const initial = makeLabel(avatar, '', 24, Color.WHITE, { bold: true, y: 1 });
+        const line = (size: number, color: Color, y: number, bold: boolean): Label => {
+            const l = leftAlign(makeLabel(chip, '', size, color, { y, bold }), -w / 2 + 68);
+            l.overflow = Label.Overflow.SHRINK;
+            l.horizontalAlign = Label.HorizontalAlign.LEFT;
+            l.verticalAlign = Label.VerticalAlign.CENTER;
+            l.node.getComponent(UITransform)!.setContentSize(w - 86, size + 8);
+            return l;
+        };
+        const line1 = line(22, Color.WHITE, 12, true);
+        const line2 = line(17, hex('#c9d3ff'), -14, false);
+        this.drawChip = (): void => {
+            if (!chip.isValid) return;
+            const user = auth().user;
+            g.clear();
+            roundRect(g, w, h, h / 2, hex('#0b1024', 200), user ? hex('#5fe39a', 200) : hex('#8fa6ff', 200), 2);
+            ag.clear();
+            ag.circle(0, 0, 22);
+            ag.fillColor = user ? hex('#ff5a3c') : Color.WHITE;
+            ag.fill();
+            if (!user) {
+                ag.lineWidth = 2;
+                ag.strokeColor = hex('#d0d4e4');
+                ag.stroke();
+            }
+            initial.string = user ? (Array.from(user.name)[0] ?? '霍') : 'G';
+            initial.color = user ? Color.WHITE : hex('#4285f4');
+            line1.string = user ? t('home.cloudOn') : t('home.google');
+            line1.color = user ? hex('#7dffb0') : Color.WHITE;
+            line2.string = user ? (user.email || user.name) : t('home.signInSub');
+        };
+        this.drawChip();
+        const btn = chip.addComponent(Button);
+        btn.target = chip;
+        btn.transition = Button.Transition.SCALE;
+        btn.zoomScale = 0.94;
+        chip.on(Button.EventType.CLICK, () => {
+            sound().play('click');
+            this.onGoogle();
+        });
+    }
+
+    /**
+     * Top bar pill: 🌐 中文 / EN (language, saved in Settings.lang) and the fullscreen toggle; left
+     * of the account chip on landscape, left of the sound button on portrait. Switching language
+     * reloads Home so every label is rebuilt.
      */
     private buildTopBar(): void {
         const h = 64;
@@ -271,11 +461,7 @@ export class Home extends Component {
         const fsW = en ? 190 : 150;
         const w = langW + fsW;
         const bar = makeNode('TopBar', this.node, w, h);
-        const bw = bar.addComponent(Widget);
-        bw.isAlignTop = true;
-        bw.isAlignRight = true;
-        bw.top = 30;
-        bw.right = 24 + 76 + 14; // sound button width + gap
+        this.dock(bar, { top: 30, right: 24 + 76 + 14 }, { top: 16, right: 24 + 76 + 14 + CHIP_W + 14 });
         const bg = bar.addComponent(Graphics);
         roundRect(bg, w, h, h / 2, hex('#0b1024', 200), hex('#8fa6ff', 200), 2);
         bg.rect(-w / 2 + langW - 1, -h / 2 + 14, 2, h - 28);
@@ -344,6 +530,8 @@ export class Home extends Component {
     }
 
     onDestroy(): void {
+        view.off('canvas-resize', this.onResize);
+        view.off('design-resolution-changed', this.onResize);
         this.offFullscreen?.();
         this.offFullscreen = null;
         this.offAuth?.();
