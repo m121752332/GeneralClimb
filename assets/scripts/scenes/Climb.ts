@@ -746,7 +746,7 @@ export class Climb extends Component {
         this.timeLabel = this.makeLabel('Time', hud, 26, Label.HorizontalAlign.RIGHT);
         outline(this.timeLabel);
         this.eventLabel = this.makeLabel('Event', hud, 40);
-        this.riskLabel = this.makeLabel('Risk', hud, 22, Label.HorizontalAlign.LEFT);
+        this.riskLabel = this.makeLabel('Risk', hud, 22);
         this.riskLabel.isBold = true;
         outline(this.riskLabel);
         this.progressLabel = this.makeLabel('Progress', hud, 22, Label.HorizontalAlign.RIGHT);
@@ -1002,9 +1002,10 @@ export class Climb extends Component {
         this.riskLabel.string = t('climb.riskValue', { pct: riskPct });
         this.riskLabel.color = sim.tier === 'crisis' ? C.riskCrisis : sim.tier === 'tense' ? C.riskTense : C.text;
         // Dark pill with a light rim around the label, then the bar's frame.
-        const riskW = this.riskLabel.node.getComponent(UITransform)!.width + 20;
+        // Two lines (「風險」 over 「20%」) centred above the bar.
+        const riskW = Math.max(64, this.riskLabel.node.getComponent(UITransform)!.width + 16);
         h.fillColor = new Color(0, 0, 0, 170);
-        h.roundRect(mx - 10, my + mh + 6, riskW, 34, 10);
+        h.roundRect(mx + 10 - riskW / 2, my + mh + 8, riskW, 64, 10);
         h.fill();
         h.fillColor = new Color(0, 0, 0, 220);
         h.rect(mx - 4, my - 4, 28, mh + 8);
@@ -1024,7 +1025,7 @@ export class Climb extends Component {
             h.lineTo(mx + 26, y);
         }
         h.stroke();
-        this.riskLabel.node.setPosition(mx, my + mh + 23);
+        this.riskLabel.node.setPosition(mx + 10, my + mh + 40);
         this.gmLabel.node.setPosition(0, top - 172);
         const showMap = !ending && !sim.practice;
         this.progressLabel.node.active = showMap;
