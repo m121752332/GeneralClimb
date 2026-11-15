@@ -68,6 +68,12 @@ export interface TowerConfig {
 export interface CloudConfig {
     /** Shortest real summit run; the cloud count may grow by at most one per this many seconds. */
     minSummitSec: number;
+    /**
+     * Fastest full run (level 1 to the tip) the cloud accepts, in seconds; must match the
+     * bestRunMs limit in config/firestore.rules and stay below the theoretical minimum
+     * (all rows × player.cellSec, tests/run-time.test.ts checks both).
+     */
+    minRunSec: number;
     /** Rows shown on the leaderboard. */
     leaderboardSize: number;
     /** Shortest gap between two player-name changes; must match config/firestore.rules. */
@@ -386,6 +392,7 @@ function checkDev(c: Checker, root: Obj): void {
 function checkCloud(c: Checker, root: Obj): void {
     const k = c.obj(root, 'cloud', '$');
     c.num(k, 'minSummitSec', '$.cloud', { min: 1, int: true });
+    c.num(k, 'minRunSec', '$.cloud', { min: 1, int: true });
     c.num(k, 'leaderboardSize', '$.cloud', { min: 1, max: 100, int: true });
     c.num(k, 'renameCooldownSec', '$.cloud', { min: 0, max: 86400, int: true });
 }

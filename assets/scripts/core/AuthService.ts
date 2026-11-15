@@ -12,6 +12,7 @@ import { FIREBASE_CONFIG, FIREBASE_SDK_VERSION } from './FirebaseConfig';
 import { t } from './I18n';
 import { type NameError, readCachedProfile, renameWaitSec, validatePlayerName, writeCachedProfile } from './PlayerName';
 import { type Progress, markSynced, readProgress, writeProgress } from './Progress';
+import { type RankedTimeRow, type TimeRow, bestRunToUpload, fasterRun, parseRunMs, rankTimes } from './RunTime';
 import type { StorageLike } from './Settings';
 
 export type AuthState = 'off' | 'loading' | 'guest' | 'signedIn' | 'error';
@@ -93,6 +94,10 @@ export class AuthService {
     renameCooldownSec = 30;
     /** Device time of the last name change (cooldown), from the cache or Firestore. */
     lastRenameMs: number | null = null;
+    /** The signed-in player's cloud fastest full run (ms), once read; null = none. */
+    cloudBestRunMs: number | null = null;
+    /** levels.json cloud.minRunSec, set by Boot once the config is loaded. */
+    minRunSec = 420;
 
     private fb: Fb = null;
     private ready: Promise<void> | null = null;
@@ -147,6 +152,7 @@ export class AuthService {
                     this.profileKnown = false;
                     if (!u) {
                         this.cloudCount = null;
+                        this.cloudBestRunMs = null;
                         this.lastSyncMs = null;
                     }
                     this.profileLoad = u ? this.loadProfile(u.uid) : Promise.resolve();
@@ -293,23 +299,34 @@ export class AuthService {
         try {
             const local: Progress = readProgress(storage);
             const result = await db.runTransaction(async (tx: Fb) => {
-                const cloud = this.toDoc(await tx.get(ref));
+                const snap = await tx.get(ref);
+                const cloud = this.toDoc(snap);
                 // Profile unread (offline): keep the cloud name instead of renaming it back to the Google one.
                 const name = this.profileKnown ? (this.user?.name ?? user.name) : (cloud?.name ?? user.name);
                 const plan = planSummitSync(local, cloud, name, Date.now(), this.minSummitSec);
+                // Fastest full run: rides along with the summit write, or goes alone when only it improved.
+                // The rules only let bestRunMs go down and never drop it, so the cloud value is kept on a rewrite.
+                const cloudBest = cloud ? parseRunMs(snap.get('bestRunMs')) : null;
+                const newBest = bestRunToUpload(local.bestRunMs, cloudBest, this.minRunSec);
+                const best = fasterRun(cloudBest, newBest);
+                const bestField = best === null ? {} : { bestRunMs: best };
                 if (plan.write?.rename) {
-                    tx.update(ref, { name: plan.write.name });
+                    tx.update(ref, { name: plan.write.name, ...bestField });
                 } else if (plan.write) {
                     tx.set(ref, {
                         name: plan.write.name,
                         count: plan.write.count,
                         updatedAt: fb.firestore.FieldValue.serverTimestamp(),
+                        ...bestField,
                     });
+                } else if (cloud && newBest !== null) {
+                    tx.update(ref, { bestRunMs: newBest });
                 }
-                return { add: plan.add, count: plan.write?.count ?? cloud?.count ?? 0 };
+                return { add: plan.add, count: plan.write?.count ?? cloud?.count ?? 0, best: plan.write || cloud ? best : null };
             });
             if (result.add > 0) writeProgress(storage, markSynced(readProgress(storage), result.add));
             this.cloudCount = result.count;
+            this.cloudBestRunMs = result.best;
             this.lastSyncMs = Date.now();
             this.emit();
             return result.add;
@@ -353,6 +370,20 @@ export class AuthService {
             if (doc) rows.push({ ...doc, uid: d.id });
         });
         return rankRows(rows);
+    }
+
+    /** Top players by fastest full run (fastest first). Readable by guests too. */
+    async fastestRuns(size: number): Promise<RankedTimeRow[]> {
+        if (!this.fb) throw Object.assign(new Error('cloud unavailable'), { text: this.configured ? t('lb.offline') : t('lb.off') });
+        // Single-field ascending index (automatic); docs without bestRunMs are left out by orderBy.
+        const snap = await this.fb.firestore().collection(SUMMITS).orderBy('bestRunMs', 'asc').limit(size).get();
+        const rows: TimeRow[] = [];
+        snap.forEach((d: Fb) => {
+            const doc = this.toDoc(d);
+            const ms = parseRunMs(d.get('bestRunMs'));
+            if (doc && ms !== null) rows.push({ uid: d.id, name: doc.name, bestRunMs: ms });
+        });
+        return rankTimes(rows);
     }
 }
 

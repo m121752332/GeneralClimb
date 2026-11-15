@@ -48,9 +48,22 @@ service cloud.firestore {
     // MIN_SUMMIT_SEC = levels.json cloud.minSummitSec（300），tests/cloud-summit.test.ts 會檢查兩邊一致。
     match /summits/{uid} {
       function validShape(d) {
-        return d.keys().hasOnly(['name', 'count', 'updatedAt'])
+        return d.keys().hasOnly(['name', 'count', 'updatedAt', 'bestRunMs'])
           && d.name is string && d.name.size() >= 1 && d.name.size() <= 24 // 程式截到 12 字，留給 emoji 等多碼字元
           && d.count is int;
+      }
+
+      // 最快時間（第 1 關到塔尖一次不墜落，毫秒）：只能變快（新值 <= 舊值；相同代表沒改），
+      // 有了就不能刪掉，且不得低於 MIN_RUN_MS = 420000（7 分鐘）。理論最快：
+      // 101 層 × 12 列 + 尖塔 2 × 48 列 = 1308 步 × cellSec 0.35 秒 ≈ 457.8 秒，還沒算強風／下雨／
+      // 老鷹一定要停下來的時間，7 分鐘留約 8% 餘裕。
+      // MIN_RUN_MS = levels.json cloud.minRunSec × 1000，tests/run-time.test.ts 會檢查兩邊一致。
+      function bestRunOk(d, old) {
+        return (!('bestRunMs' in d) && (old == null || !('bestRunMs' in old)))
+          || ('bestRunMs' in d
+              && d.bestRunMs is int
+              && d.bestRunMs >= 420000
+              && (old == null || !('bestRunMs' in old) || d.bestRunMs <= old.bestRunMs));
       }
 
       allow read: if true;
@@ -58,13 +71,15 @@ service cloud.firestore {
       // 第一次上傳只能是 1 次。
       allow create: if signedInAs(uid)
         && validShape(request.resource.data)
+        && bestRunOk(request.resource.data, null)
         && request.resource.data.count == 1
         && request.resource.data.updatedAt == request.time;
 
       allow update: if signedInAs(uid)
         && validShape(request.resource.data)
+        && bestRunOk(request.resource.data, resource.data)
         && (
-          // 只改名（Google 名稱或玩家自訂名稱）：次數與時間都不動
+          // 只改名（Google 名稱或玩家自訂名稱）／只更新最快時間：次數與時間都不動
           (request.resource.data.count == resource.data.count
             && request.resource.data.updatedAt == resource.data.updatedAt)
           ||
