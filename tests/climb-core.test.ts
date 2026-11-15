@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { parseLevelConfig } from '../assets/scripts/config/LevelConfig.ts';
 import {
     ClimbSim, EventScheduler, NO_DIR, buildWall, dangerAt, flareFor, createRng, dirFromKeys, dirFromStick,
-    formatClimbTime, hasSafeRoute, isObstacle, localCol, wrapCol, zoneOf,
+    clockParts, climbProgress, formatClimbTime, formatProgress, hasSafeRoute, isObstacle, localCol, wrapCol, zoneOf,
 } from '../assets/scripts/climb/ClimbCore.ts';
 
 const raw = JSON.parse(readFileSync(new URL('../assets/resources/config/levels.json', import.meta.url), 'utf8'));
@@ -512,4 +512,21 @@ test('dev speed: steps take cellSec / speed, and the next level keeps the speed'
     sim.speed = 3;
     sim.phase = 'cleared';
     assert.equal(sim.next()?.speed, 3);
+});
+
+test('clock parts: hours, minutes, seconds, tenths', () => {
+    assert.deepEqual(clockParts(183.47), { h: 0, m: 3, s: 3, tenth: 4 });
+    assert.deepEqual(clockParts(3723.9), { h: 1, m: 2, s: 3, tenth: 9 });
+    assert.deepEqual(clockParts(-1), { h: 0, m: 0, s: 0, tenth: 0 });
+});
+
+test('climb progress over all levels, one decimal, never 100% early', () => {
+    const c = cfg();
+    const total = c.levels.reduce((a, l) => a + l.rows, 0);
+    assert.equal(climbProgress(c.levels, 0, 0), 0);
+    assert.equal(climbProgress(c.levels, 1, 0), c.levels[0].rows / total);
+    assert.equal(climbProgress(c.levels, c.levels.length - 1, 1e9), 1);
+    assert.equal(formatProgress(0.30649), '30.6%');
+    assert.equal(formatProgress(0.9999), '99.9%');
+    assert.equal(formatProgress(1), '100.0%');
 });

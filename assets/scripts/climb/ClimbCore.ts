@@ -706,3 +706,31 @@ export function formatClimbTime(sec: number): string {
     const s = Math.floor((tenths % 600) / 10);
     return `${m}:${String(s).padStart(2, '0')}.${tenths % 10}`;
 }
+
+/** Climb time split for the HUD clock: hours, minutes, seconds and tenths (truncated). */
+export function clockParts(sec: number): { h: number; m: number; s: number; tenth: number } {
+    const tenths = Math.floor(Math.max(0, sec) * 10);
+    const totalSec = Math.floor(tenths / 10);
+    return { h: Math.floor(totalSec / 3600), m: Math.floor((totalSec % 3600) / 60), s: totalSec % 60, tenth: tenths % 10 };
+}
+
+/**
+ * Share of the whole climb done (0..1): rows of the levels below plus `row` in this level,
+ * over the rows of all levels (1F to the spire tip).
+ */
+export function climbProgress(levels: readonly { rows: number }[], levelIndex: number, row: number): number {
+    let total = 0;
+    let done = 0;
+    levels.forEach((l, i) => {
+        total += l.rows;
+        if (i < levelIndex) done += l.rows;
+        else if (i === levelIndex) done += Math.min(l.rows, Math.max(0, row));
+    });
+    return total > 0 ? Math.min(1, done / total) : 0;
+}
+
+/** Progress as a percent with one decimal, never rounded up to 100 before the top. */
+export function formatProgress(p: number): string {
+    const tenths = Math.floor(Math.min(1, Math.max(0, p)) * 1000 + 1e-9);
+    return `${(tenths / 10).toFixed(1)}%`;
+}
