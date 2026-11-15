@@ -2,7 +2,8 @@ import { Color, Graphics, Node, UITransform } from 'cc';
 import { auth } from '../core/AuthService';
 import { formatCloudCount, playerTag } from '../core/CloudSummit';
 import { t } from '../core/I18n';
-import { formatRounds, formatRunTime } from '../core/RunTime';
+import { formatRealDuration } from '../core/RealTime';
+import { formatRounds } from '../core/RunTime';
 import { STYLE, type UiButton, drawButton, hex, makeButton, makeLabel, makeNode, openModal, roundRect } from './UiKit';
 
 const W = 620;
@@ -49,7 +50,7 @@ export function openLeaderboard(root: Node, size: number, onClose?: () => void):
         if (!rows) {
             rows = tab === 'rounds'
                 ? svc.leaderboard(size).then((rs) => rs.map((r) => ({ uid: r.uid, name: r.name, rank: r.rank, value: formatRounds(r.count) })))
-                : svc.fastestRuns(size).then((rs) => rs.map((r) => ({ uid: r.uid, name: r.name, rank: r.rank, value: formatRunTime(r.bestRunMs) })));
+                : svc.fastestRuns(size).then((rs) => rs.map((r) => ({ uid: r.uid, name: r.name, rank: r.rank, value: formatRealDuration(r.bestRunMs) })));
             // A failed load is tried again the next time the tab is opened.
             rows.catch(() => cache.delete(tab));
             cache.set(tab, rows);
@@ -64,7 +65,7 @@ export function openLeaderboard(root: Node, size: number, onClose?: () => void):
                 : t('lb.signInHint');
         }
         if (!me) return t('lb.timeSignInHint');
-        const best = svc.cloudBestRunMs === null ? t('lb.noRecord') : t('lb.myBest', { time: formatRunTime(svc.cloudBestRunMs) });
+        const best = svc.cloudBestRunMs === null ? t('lb.noRecord') : t('lb.myBest', { time: formatRealDuration(svc.cloudBestRunMs) });
         return `${me.name}#${playerTag(me.uid)} · ${best}`;
     };
 

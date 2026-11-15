@@ -10,6 +10,7 @@ import { auth } from '../core/AuthService';
 import { SPIRE_TIP_FLOOR, recordLocalBest } from '../core/LocalBest';
 import { afterFall, afterFullRun, afterLevelCleared, afterSummit, updateProgress } from '../core/Progress';
 import { runMsFromSec } from '../core/RunTime';
+import { formatRealDuration } from '../core/RealTime';
 import { levelName, t } from '../core/I18n';
 import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
@@ -102,6 +103,11 @@ function clockText(sec: number): string {
     const { h, m, s, tenth } = clockParts(sec);
     const vars = { h, m: String(m).padStart(2, '0'), s: String(s).padStart(2, '0'), d: tenth };
     return t(h > 0 ? 'climb.clockH' : 'climb.clock', vars);
+}
+
+/** Game climb seconds as real climbing time (core/RealTime, x9), hours and minutes. */
+function realText(sec: number): string {
+    return formatRealDuration(sec * 1000);
 }
 
 /** Label text in white with a dark outline, readable over sky and glass alike. */
@@ -412,7 +418,7 @@ export class Climb extends Component {
             }
             const from = this.cfg!.levels[this.startIndex].floorFrom;
             this.showOverlay(t('climb.fall', {
-                cause: fallText(sim.fallCause ?? 'edge'), floor: sim.runMaxFloor ?? '-', time: clockText(sim.climbSec), seed: sim.seed, from: String(from),
+                cause: fallText(sim.fallCause ?? 'edge'), floor: sim.runMaxFloor ?? '-', time: realText(sim.climbSec), seed: sim.seed, from: String(from),
             }));
         }
     }
@@ -424,7 +430,7 @@ export class Climb extends Component {
             sound().music(null);
             sound().play('levelUp');
             this.mode = 'cleared';
-            this.showOverlay(t('climb.practiceDone', { time: clockText(sim.climbSec) }));
+            this.showOverlay(t('climb.practiceDone', { time: realText(sim.climbSec) }));
             return;
         }
         // Clearing level N opens level N+1 in the level select, kept across reloads.
@@ -477,7 +483,7 @@ export class Climb extends Component {
             this.startIndex = 0;
             round = `\n${t('climb.summitRound', { rounds: p.rounds, summits: p.summits, next: p.rounds + 1 })}`;
         }
-        this.showOverlay(t('climb.summit', { time: clockText(sim.climbSec), seed: sim.seed, round }));
+        this.showOverlay(t('climb.summit', { time: realText(sim.climbSec), game: clockText(sim.climbSec), seed: sim.seed, round }));
     }
 
     /**
@@ -962,7 +968,7 @@ export class Climb extends Component {
             ? t('climb.hudPractice', { name: levelName(shown.name) })
             : t('climb.hudLevel', { id: shown.id, name: levelName(shown.name), floors: floorsText(shown) });
         this.levelLabel.node.setPosition(0, top - 106);
-        this.timeLabel.string = t('climb.time', { clock: clockText(sim.climbSec) });
+        this.timeLabel.string = t('climb.time', { clock: realText(sim.climbSec) });
         this.timeLabel.node.setPosition(right - 24, top - 130);
         // Dark pill behind the clock so it reads over a bright sky.
         const timeW = this.timeLabel.node.getComponent(UITransform)!.width + 24;

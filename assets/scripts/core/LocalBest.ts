@@ -4,6 +4,7 @@
  */
 import type { StorageLike } from './Settings';
 import { t } from './I18n';
+import { formatRealDuration } from './RealTime';
 
 export const BEST_KEY = 'gcr.best.v1';
 /** GDD §8: maxFloor 102 means the spire tip. */
@@ -29,18 +30,11 @@ export function parseLocalBest(text: string | null): LocalBest | null {
     }
 }
 
-function formatDuration(ms: number): string {
-    const total = Math.floor(ms / 1000);
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-}
-
-/** Home screen text, e.g. 「最佳紀錄：47F」 or 「最佳紀錄：登頂 12:34」. */
+/** Home screen text, e.g. 「最佳紀錄：47F」 or 「最佳紀錄：登頂 1小時53分」 (real time, core/RealTime). */
 export function formatBest(best: LocalBest | null): string {
     if (!best) return t('best.none');
     if (best.maxFloor >= SPIRE_TIP_FLOOR) {
-        return best.bestClearMs ? t('best.summitTime', { time: formatDuration(best.bestClearMs) }) : t('best.summit');
+        return best.bestClearMs ? t('best.summitTime', { time: formatRealDuration(best.bestClearMs) }) : t('best.summit');
     }
     return t('best.floor', { floor: best.maxFloor });
 }

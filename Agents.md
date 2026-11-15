@@ -75,7 +75,8 @@ GeneralClimb/
 Google 登入與登頂排行榜（ADR-09 修訂）：`core/FirebaseConfig.ts`（網頁設定，`null` = 只能訪客）、`core/AuthService.ts`（`auth()` 單例：Boot 載入 SDK、`signInWithPopup`、`syncSummits` 上傳未同步的登頂、`leaderboard`、`deleteAccount`）、`core/CloudSummit.ts`（純 TS：與 `config/firestore.rules` 相同的上傳限制、排名、名稱）。UI 在 `ui/AccountPanel.ts`、`ui/LeaderboardPanel.ts`。`levels.json` 的 `cloud.minSummitSec` 必須等於規則裡的秒數（測試會檢查）。Firebase 專案設定步驟：`docs/firebase-setup.md`。
 玩家改名（帳號面板「玩家名稱」→ 修改）：規則在 `core/PlayerName.ts`（純 TS：去頭尾空白後 2–12 字，只允許中英文、數字、底線、空白、連字號；本機快取 `gcr.profile.v1`），`AuthService.rename` 一次交易寫 `players/{uid}` = `{ name, nameUpdatedAt }`，若已在排行榜也更新自己的 `summits/{uid}.name`（次數與時間不動）。`#編號` 由 uid 產生、不能改。冷卻秒數 `levels.json` 的 `cloud.renameCooldownSec` 必須等於 `firestore.rules` 裡的秒數（`tests/player-name.test.ts` 檢查）。
 版本號：`core/Version.ts` 的 `APP_VERSION`（執行期讀不到 package.json）必須等於 `package.json` 的 `version`（`tests/version.test.ts` 檢查），設定頁「完成」鈕下方顯示「版本 v1.0.0」（`settings.version`）。發版時兩處一起改。
-關卡 HUD（`scenes/Climb.ts`）：左側風險條上方是深色膠囊「風險 N%」（緊張／危機變色）；右上時間「時間 03分03.4秒」（超過 60 分加時，`ClimbCore.clockParts`，結算畫面同格式）；101 小地圖旁標「完成 32.1%」＝整趟 14 關已爬列數比例（`climbProgress`／`formatProgress`，到頂前不會顯示 100%）。角色頭上名牌：Google 登入後顯示 Google 名稱（同排行榜 `cloudName`），訪客顯示「霍將軍」。
+關卡 HUD（`scenes/Climb.ts`）：左側風險條上方是深色膠囊「風險 N%」（緊張／危機變色）；右上「現實時間 1小時34分」（見下方現實攀爬時間）；101 小地圖旁標「完成 32.1%」＝整趟 14 關已爬列數比例（`climbProgress`／`formatProgress`，到頂前不會顯示 100%）。角色頭上名牌：Google 登入後顯示 Google 名稱（同排行榜 `cloudName`），訪客顯示「霍將軍」。
+現實攀爬時間（只改顯示）：`core/RealTime.ts`（純 TS）的 `REAL_TIME_FACTOR = 9`（1 遊戲分鐘 = 9 現實分鐘），`formatRealDuration(gameMs)` 顯示「1小時34分」／「1h 34m」（不滿 1 小時「45分」，分鐘無條件捨去，`withSeconds` 加秒；字串 `time.real*`）。用在關卡 HUD、墜落／練習完成／登頂結算（登頂另附「遊戲時間 10分30.4秒」，`clockParts`）、主頁最佳紀錄、排行榜最快時間。紀錄、Firestore `bestRunMs` 與排序仍是原始遊戲 ms。
 關卡中的「退出」（回主畫面，按 X 也可）只在該關起點（第 0 列）、暫停、墜落或結算畫面出現。
 Scenes：Boot → Home（登入／開始遊戲／練習模式）→ Intro → Climb → Transition → Fall → Victory；Practice（三層樓平房）
 Components：InputController、RiskSystem、EventScheduler、WeatherSystem、EagleSystem、WindowCrowd、LevelLoader、AuthService
