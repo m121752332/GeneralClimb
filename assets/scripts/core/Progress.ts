@@ -26,6 +26,8 @@ export interface Progress {
     syncedSummits: number;
     /** ISO time of the last summit, or null. */
     lastSummitAt: string | null;
+    /** Fastest full run (level 1 to the tip, no fall) in ms, or null (core/RunTime). */
+    bestRunMs: number | null;
 }
 
 export const EMPTY_PROGRESS: Readonly<Progress> = Object.freeze({
@@ -34,6 +36,7 @@ export const EMPTY_PROGRESS: Readonly<Progress> = Object.freeze({
     summits: 0,
     syncedSummits: 0,
     lastSummitAt: null,
+    bestRunMs: null,
 });
 
 function count(v: unknown): number {
@@ -53,6 +56,7 @@ export function parseProgress(text: string | null): Progress {
             summits,
             syncedSummits: Math.min(count(r.syncedSummits), summits),
             lastSummitAt: typeof r.lastSummitAt === 'string' ? r.lastSummitAt : null,
+            bestRunMs: typeof r.bestRunMs === 'number' && Number.isInteger(r.bestRunMs) && r.bestRunMs > 0 ? r.bestRunMs : null,
         };
     } catch {
         return { ...EMPTY_PROGRESS };
@@ -100,6 +104,16 @@ export function afterSummit(p: Progress, now: Date): Progress {
         summits: p.summits + 1,
         lastSummitAt: now.toISOString(),
     };
+}
+
+/**
+ * After a full run (level 1 to the tip without a fall) took `runMs`: keeps the faster time.
+ * The cloud sync uploads it when it beats the cloud value (no separate synced copy is needed:
+ * the sync reads the cloud value in the same transaction).
+ */
+export function afterFullRun(p: Progress, runMs: number): Progress {
+    if (!Number.isInteger(runMs) || runMs <= 0) return p;
+    return p.bestRunMs !== null && p.bestRunMs <= runMs ? p : { ...p, bestRunMs: runMs };
 }
 
 /** Summits not yet added to the cloud total. */

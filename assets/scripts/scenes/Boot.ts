@@ -69,6 +69,7 @@ export class Boot extends Component {
                     if (this.config) {
                         svc.minSummitSec = this.config.cloud.minSummitSec;
                         svc.renameCooldownSec = this.config.cloud.renameCooldownSec;
+                        svc.minRunSec = this.config.cloud.minRunSec;
                     }
                     await svc.init();
                     if (svc.user) return t('boot.signedIn', { name: svc.user.name, best });

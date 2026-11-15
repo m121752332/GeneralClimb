@@ -8,7 +8,8 @@ import { effectiveSpeed, nextSpeed, speedText } from '../core/ClimbSpeed';
 import { GameSession } from '../core/GameSession';
 import { auth } from '../core/AuthService';
 import { SPIRE_TIP_FLOOR, recordLocalBest } from '../core/LocalBest';
-import { afterFall, afterLevelCleared, afterSummit, updateProgress } from '../core/Progress';
+import { afterFall, afterFullRun, afterLevelCleared, afterSummit, updateProgress } from '../core/Progress';
+import { runMsFromSec } from '../core/RunTime';
 import { levelName, t } from '../core/I18n';
 import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
@@ -184,6 +185,8 @@ export class Climb extends Component {
     private nextSim: ClimbSim | null = null;
     /** Practice mode: the three-storey house, one gentle wind, rain and eagle, nothing recorded. */
     private practice = false;
+    /** This run began at level 1 (not resumed from the level select), so its time can be a full run. */
+    private runFromStart = false;
     private tipLabel!: Label;
     private transSec = 0;
     private endSec = 0;
@@ -287,6 +290,7 @@ export class Climb extends Component {
         if (!this.cfg) return;
         this.nextSim = null;
         this.sim = new ClimbSim(this.cfg, this.startIndex, randomSeed(), undefined, this.practice);
+        this.runFromStart = this.startIndex === 0;
         this.speed = effectiveSpeed(GameSession.devMode === true, this.cfg.dev.climbSpeeds, settings().get().devSpeed);
         this.sim.speed = this.speed;
         console.log(this.practice ? `[Climb] practice seed ${this.sim.seed}` : `[Climb] level ${this.sim.level.id} seed ${this.sim.seed}`);
@@ -462,7 +466,12 @@ export class Climb extends Component {
         if (this.recording) {
             // One round (周目) done: unlocks go back to level 1, the summit count goes up.
             recordLocalBest(this.storage(), { maxFloor: SPIRE_TIP_FLOOR, bestClearMs: Math.round(sim.climbSec * 1000) });
-            const p = updateProgress(this.storage(), (q) => afterSummit(q, new Date()));
+            // 最快時間: climbSec only counts climbing (no pause / transitions / ending), from level 1, no fall.
+            const runMs = this.runFromStart ? runMsFromSec(sim.climbSec) : null;
+            const p = updateProgress(this.storage(), (q) => {
+                const r = afterSummit(q, new Date());
+                return runMs === null ? r : afterFullRun(r, runMs);
+            });
             // Signed in: add it to the cloud summit count right away (guests sync after signing in).
             void auth().syncSummits(this.storage());
             this.startIndex = 0;
