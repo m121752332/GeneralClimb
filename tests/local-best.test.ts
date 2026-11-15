@@ -12,8 +12,9 @@ test('highest floor', () => {
     assert.equal(formatBest(parseLocalBest('{"maxFloor":47}')), '最佳紀錄：47F');
 });
 
-test('cleared run shows clear time', () => {
-    assert.equal(formatBest(parseLocalBest('{"maxFloor":102,"bestClearMs":754000}')), '最佳紀錄：登頂 12:34');
+test('cleared run shows the clear time as real climbing time (x9)', () => {
+    // game 12m34s → real 113m06s
+    assert.equal(formatBest(parseLocalBest('{"maxFloor":102,"bestClearMs":754000}')), '最佳紀錄：登頂 1小時53分');
     assert.equal(formatBest(parseLocalBest('{"maxFloor":102}')), '最佳紀錄：登頂');
 });
 
@@ -35,5 +36,5 @@ test('recordLocalBest keeps the better record', async () => {
     assert.deepEqual(recordLocalBest(s, { maxFloor: 102, bestClearMs: 900000 }), { maxFloor: 102, bestClearMs: 900000 });
     assert.deepEqual(recordLocalBest(s, { maxFloor: 102, bestClearMs: 800000 }), { maxFloor: 102, bestClearMs: 800000 });
     assert.deepEqual(betterBest({ maxFloor: 102, bestClearMs: 800000 }, { maxFloor: 102, bestClearMs: 950000 }), { maxFloor: 102, bestClearMs: 800000 });
-    assert.equal(formatBest(readLocalBest(s)), '最佳紀錄：登頂 13:20');
+    assert.equal(formatBest(readLocalBest(s)), '最佳紀錄：登頂 2小時0分');
 });
