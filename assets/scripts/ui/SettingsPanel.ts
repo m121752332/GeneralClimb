@@ -3,6 +3,7 @@ import { parseCheat } from '../core/CheatCodes';
 import { t } from '../core/I18n';
 import { APP_VERSION } from '../core/Version';
 import { settings } from '../core/Settings';
+import { guideUrl, makeLink } from './AccountPanel';
 import { STYLE, hex, makeButton, makeLabel, makeNode, makeSwitch, openModal, roundRect } from './UiKit';
 
 const W = 600;
@@ -175,5 +176,7 @@ export function openSettings(root: Node, hooks: SettingsPanelHooks): void {
     refreshStatus();
 
     makeButton(p, t('settings.done'), 240, 80, STYLE.primary, modal.close, 0, -H / 2 + 84).label.fontSize = 34;
+    // Player guide (site/guide/), left of 完成.
+    makeLink(p, t('settings.guide'), -W / 2 + 95, -H / 2 + 84, guideUrl());
     makeLabel(p, t('settings.version', { version: APP_VERSION }), 20, hex('#6f78a8'), { x: 0, y: -H / 2 + 26 });
 }

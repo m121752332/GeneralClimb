@@ -1,7 +1,7 @@
 import { Button, Color, EditBox, Graphics, Label, Node, UITransform } from 'cc';
 import { auth, nameErrorText } from '../core/AuthService';
 import { formatCloudCount, formatSyncAgo, playerTag } from '../core/CloudSummit';
-import { t } from '../core/I18n';
+import { lang, t } from '../core/I18n';
 import { NAME_MAX, nameLength, normalizeName, validatePlayerName } from '../core/PlayerName';
 import type { StorageLike } from '../core/Settings';
 import { type ButtonStyle, STYLE, hex, makeButton, makeLabel, makeNode, openModal, roundRect } from './UiKit';
@@ -14,6 +14,12 @@ const DANGER: ButtonStyle = { fill: hex('#3a1420', 235), base: hex('#22080e', 23
 /** Static pages next to index.html (build-templates/web-mobile). */
 export const PRIVACY_URL = 'privacy.html';
 export const TERMS_URL = 'terms.html';
+/** Player guide (build-templates/web-mobile/guide), opened in the player's language. */
+export const GUIDE_URL = 'guide/index.html';
+
+export function guideUrl(): string {
+    return `${GUIDE_URL}?lang=${lang() === 'en' ? 'en' : 'zh'}`;
+}
 
 function leftAlign(label: Label, x: number): Label {
     label.node.getComponent(UITransform)!.setAnchorPoint(0, 0.5);
@@ -31,7 +37,7 @@ export function openPage(url: string): void {
     (globalThis as { open?: (u: string, t: string) => unknown }).open?.(url, '_blank');
 }
 
-function makeLink(parent: Node, text: string, x: number, y: number, url: string): void {
+export function makeLink(parent: Node, text: string, x: number, y: number, url: string): void {
     const label = makeLabel(parent, text, 22, hex('#8fa6ff'), { x, y });
     label.node.getComponent(UITransform)!.setContentSize(150, 44);
     const btn = label.node.addComponent(Button);

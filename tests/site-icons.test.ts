@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { ICON_DIR, ICON_FILES, NO_SCROLL_STYLE, injectIconLinks } from '../tools/site-icons.mjs';
+import { GUIDE_DIR, ICON_DIR, ICON_FILES, NO_SCROLL_STYLE, injectIconLinks } from '../tools/site-icons.mjs';
 
 const html = '<html><head>\n  <title>x</title>\n</head><body></body></html>';
 
@@ -35,4 +35,12 @@ test('committed site/index.html links the icons and hides page scrollbars', () =
 
 test('injectIconLinks adds the no-scrollbar style', () => {
     assert.ok(injectIconLinks(html).includes(NO_SCROLL_STYLE));
+});
+
+test('committed site/guide/index.html is the build template copy', () => {
+    const template = readFileSync(`${ICON_DIR}/${GUIDE_DIR}/index.html`, 'utf8');
+    const site = readFileSync(new URL(`../site/${GUIDE_DIR}/index.html`, import.meta.url), 'utf8');
+    assert.equal(site, template);
+    // Developer cheat codes are not for players.
+    assert.ok(!/RUNGM|STOPGM/.test(template));
 });

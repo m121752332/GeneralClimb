@@ -52,6 +52,7 @@ const ZH = {
     'home.cloudOn': '雲端存檔已開啟',
     'home.signInSub': '登入後同步登頂紀錄',
     'home.tip': '提示：放開方向鍵就是抓牢，遇到強風、下雨、老鷹先停下來',
+    'home.guide': '玩法說明 ›',
     'cloud.count': '雲端登頂 {n} 次',
     'cloud.off': 'Google 登入尚未開放',
     'cloud.offline': '雲端服務無法連線，目前以訪客進行',
@@ -179,6 +180,7 @@ const ZH = {
     'settings.enter': '輸入',
     'settings.done': '完成',
     'settings.version': '版本 v{version}',
+    'settings.guide': '遊戲說明',
 
     // Level select
     'levels.title': '選擇關卡',
@@ -265,6 +267,7 @@ const EN: Record<TextKey, string> = {
     'home.cloudOn': 'Cloud save on',
     'home.signInSub': 'Sync your summits',
     'home.tip': 'Tip: let go of the keys to hold on. Stop for wind, rain and eagles.',
+    'home.guide': 'Guide ›',
     'cloud.count': 'Cloud summits: {n}',
     'cloud.off': 'Google sign-in is not available yet',
     'cloud.offline': 'Cannot reach the cloud, playing as a guest',
@@ -388,6 +391,7 @@ const EN: Record<TextKey, string> = {
     'settings.enter': 'Enter',
     'settings.done': 'Done',
     'settings.version': 'Version v{version}',
+    'settings.guide': 'Player guide',
 
     'levels.title': 'Levels',
     'levels.titleGm': 'Levels · GM',
