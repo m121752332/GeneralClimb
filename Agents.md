@@ -9,6 +9,8 @@
 遇到強風、下雨、老鷹要停下來（放開方向鍵＝抓牢），墜落一律回 1F 重來。
 
 **權威文件（動手前先讀）**
+- `docs/DEVELOPMENT.md` — 完整開發說明：依流程（Boot → Home → 開始 → 關卡 → 登頂 → 練習）列出檔案、資料流、設定值、ADR 與 PR。
+- `docs/CHANGELOG.md` — 依 PR 的修改歷程。
 - `docs/ADR.md` — 已接受的架構決策（2026-11-13）。**不要自行推翻 ADR 的決策**；需要改就先提出並更新 ADR。
 - `docs/GDD.md` — 遊戲設計細節與數值。
 - `docs/flowchart.html` — 整局流程圖與 14 關進度塔（用瀏覽器開）。
@@ -63,7 +65,7 @@ GeneralClimb/
 
 ## 主要元件（ADR-01、GDD）
 目前做出 Boot（分段載入畫面：遊戲設定、帳號、天氣系統、NPC、音效、場景渲染，全部完成才進 Home；失敗可重試）與 Home（主畫面：開始遊戲、選擇關卡、練習模式、設定、Google 登入、最佳紀錄；UI 由程式建立，見 `assets/scripts/ui/`），以下為規劃。
-金手指（設定頁）：`RUNGM` 開啟、`STOPGM` 關閉開發人員模式（`Settings.devMode` → `GameSession.devMode`），開啟時選關可選任一樓層關（尖塔 13–14 關仍鎖）；解析在 `core/CheatCodes.ts`、可選關卡規則在 `core/LevelAccess.ts`。開發人員模式在關卡左上有爬樓變速（`levels.json` 的 `dev.climbSpeeds`：×1／×1.5／×2／×3／×5，點擊或按 V 切換，存在 `Settings.devSpeed`），一般玩家固定 ×1。
+金手指（設定頁）：`RUNGM` 開啟、`STOPGM` 關閉開發人員模式（`Settings.devMode` → `GameSession.devMode`），開啟時選關可選全部 14 關（含尖塔 13–14 關，PR #8 起）；解析在 `core/CheatCodes.ts`、可選關卡規則在 `core/LevelAccess.ts`。開發人員模式在關卡左上有爬樓變速（`levels.json` 的 `dev.climbSpeeds`：×1／×1.5／×2／×3／×5，點擊或按 V 切換，存在 `Settings.devSpeed`），一般玩家固定 ×1。
 音效與 BGM（M4）：`core/Audio.ts` 用 Web Audio 即時合成（原創、無音檔），音效表 `SOUNDS`、曲子 `TRACKS`；`core/Sound.ts` 的 `sound()` 是共用引擎，跟著設定的音量／靜音。瀏覽器要等第一次點擊或按鍵才會出聲。
 窗內 NPC（M2）：`climb/CrowdPlan.ts`（純 TS：每關固定的窗位、種類、反應）＋`scenes/WindowCrowd.ts`（身體合成一個 mesh，只有手臂是節點）；只放在安全欄、整層無障礙的窗，尖塔不放。攀爬者靠近時揮手或拍照，有危險或墜落時擔心。共用網格工具在 `scenes/MeshKit.ts`。
 練習模式（GDD §7）：主頁「練習模式」→ `GameSession.mode = 'practice'` → 同一個 Climb 場景。`ClimbCore.practiceLevel()` 產生三層樓平房關（`levels.json` 的 `practice`：樓層數、牆寬、`demoEvents`、`demoAt`、`intensity`），`demoRows()` 把 `demoAt`（房子高度的比例）換成觸發列（各一次、依序），示範還沒跑完前屋頂那一步會被擋住；練習時不跑計時事件，事件長度取 `durationSec` 最小值，`intensity` 只放寬懲罰（強風推移間隔、強風風險、雨天容許時間、老鷹發現時間 ÷ 或 × intensity）。`Tower3D` 傳入樓層數就改畫平房（屋頂女兒牆、樓梯間、水塔，遠方天際線有 101）。墜落回地面再練、登頂顯示「練習完成」，不寫任何紀錄。網址加 `?practice=1` 可直接進練習。
