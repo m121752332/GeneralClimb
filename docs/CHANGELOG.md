@@ -3,16 +3,11 @@
 依 PR 編號列出修改歷程（日期為合併日，UTC）。每筆標出主要檔案與對應決策，細節看 PR 本文與 `docs/DEVELOPMENT.md`。
 PR 連結格式：`https://github.com/m121752332/GeneralClimb/pull/<編號>`。
 
-## 未合併
-
-| PR | 內容 |
-| --- | --- |
-| #35 | 現實攀爬時間倍率 ×9 → **×9.5**（`core/RealTime.ts` 的 `REAL_TIME_FACTOR`），只影響顯示；測試期望值重算、重建 `site/`。ADR-16 |
-
 ## v1.0.0 之後
 
 | PR | 日期 | 內容 |
 | --- | --- | --- |
+| #35 | 2026-11-20 | 現實攀爬時間倍率 ×9 → **×9.5**（`core/RealTime.ts` 的 `REAL_TIME_FACTOR`），只影響顯示；測試期望值重算、重建 `site/`。ADR-16 |
 | #34 | 2026-11-15 | 遊戲時間換算現實攀爬時間（×9）：新增 `core/RealTime.ts`（`toRealMs`、`formatRealDuration`），套用到 HUD、主頁最佳紀錄、墜落／練習／登頂結算、排行榜最快時間；Firestore 仍存遊戲 ms。ADR-16 |
 | #33 | 2026-11-15 | 主頁直式：語言／全螢幕膠囊單獨在右上，音量鈕移到帳號膠囊右邊；email 超過 26 字截斷（新增 `core/TextClip.ts`）；右上位置改具名常數。ADR-13 |
 

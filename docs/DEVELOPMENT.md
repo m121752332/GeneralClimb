@@ -204,7 +204,7 @@ npm run publish:site
 - 設定存在 `gcr.settings.v1`（`core/Settings.ts`）：`volume`（0.8）、`vibration`、`flashEffects`、`muted`、`devMode`、`devSpeed`、`lang`。損壞或無法存取時用預設值。
 - **金手指**（`core/CheatCodes.ts`）：輸入 `RUNGM` 開、`STOPGM` 關開發人員模式；去頭尾空白、不分大小寫，輸入框自動轉大寫；`[RUNGM]` 之類算無效指令。`Settings.devMode` 即時同步到 `GameSession.devMode` 與 GM 標章。
 - **開發人員模式的效果**：
-  - 選關可選**全部 14 關**，尖塔也開放（`core/LevelAccess.ts`，PR #8 起；`Agents.md` 寫「尖塔仍鎖」是舊說法）。
+  - 選關可選**全部 14 關**，尖塔也開放（`core/LevelAccess.ts`，PR #8 起）。
   - 關卡左上出現爬樓變速鈕（點擊或按 V），`dev.climbSpeeds` ×1／×1.5／×2／×3／×5，存在 `Settings.devSpeed`；只縮短爬一格的時間，風險與事件計時不變。一般玩家固定 ×1（`core/ClimbSpeed.ts` 的 `effectiveSpeed`）。
   - **不寫任何紀錄**（不解鎖、不加周目、不上傳）。
 - **版本號**（PR #32）：完成鈕下方「版本 v1.0.0」。`core/Version.ts` 的 `APP_VERSION` 必須等於 `package.json` 的 `version`（執行期讀不到 package.json；`tests/version.test.ts` 檢查）。發版時兩處一起改。
