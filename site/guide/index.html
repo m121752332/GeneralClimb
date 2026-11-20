@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="zh-Hant" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>遊戲說明 · 霍將軍爬101大樓</title>
+<meta name="description" content="霍將軍爬101大樓 玩法說明：操作、風險值、強風下雨老鷹、14 關、練習模式、排行榜與常見問題。">
+<link rel="icon" href="../favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #0b1024; --panel: #141a36; --panel2: #1a2350; --line: #2b3566;
+    --text: #e8ecff; --muted: #9aa0bf; --gold: #ffc94a; --red: #ff5a3c; --pink: #ff8a7a; --blue: #8fa6ff;
+    --mark: #ffc94a55;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 76px; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.75 system-ui, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; }
+  a { color: var(--blue); }
+  html[data-lang="zh"] [lang="en"], html[data-lang="en"] [lang="zh-Hant"]:not(html) { display: none !important; }
+
+  /* Top bar */
+  .top { position: sticky; top: 0; z-index: 20; background: #0b1024f2; backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  .top-in { max-width: 1180px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--gold); font-weight: 800; text-decoration: none; white-space: nowrap; }
+  .brand img { width: 32px; height: 32px; border-radius: 8px; }
+  .brand small { color: var(--muted); font-weight: 600; }
+  .search { flex: 1; min-width: 0; position: relative; }
+  .search input { width: 100%; padding: 9px 12px 9px 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 15px; }
+  .search input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; stroke: var(--muted); }
+  .pill { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; flex: none; }
+  .pill button { background: none; border: 0; color: var(--muted); font: inherit; font-size: 14px; padding: 6px 12px; cursor: pointer; }
+  .pill button[aria-pressed="true"] { background: var(--panel2); color: #fff; }
+  .play { flex: none; background: var(--red); color: #fff; text-decoration: none; font-weight: 700; padding: 7px 14px; border-radius: 999px; font-size: 14px; }
+  .menu-btn { display: none; flex: none; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 10px; width: 40px; height: 38px; font-size: 18px; cursor: pointer; }
+
+  /* Layout */
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 32px; }
+  nav.toc { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 64px); overflow: auto; padding: 20px 0 32px; }
+  nav.toc h4 { margin: 16px 0 4px; color: var(--muted); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  nav.toc a { display: block; padding: 4px 10px; border-left: 2px solid transparent; color: var(--text); text-decoration: none; font-size: 15px; border-radius: 0 6px 6px 0; }
+  nav.toc a:hover { background: var(--panel); }
+  nav.toc a.on { border-left-color: var(--gold); color: var(--gold); background: var(--panel); }
+  main { padding: 24px 0 64px; min-width: 0; }
+
+  .hero { background: linear-gradient(135deg, #1a2350, #2a1530); border: 1px solid var(--line); border-radius: 18px; padding: 24px; margin-bottom: 8px; }
+  .hero h1 { margin: 0 0 6px; color: var(--gold); font-size: 30px; line-height: 1.3; }
+  .hero p { margin: 0; color: #d6dbf5; }
+  .rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+  .rule { background: #0b1024b3; border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .rule b { display: block; color: var(--pink); font-size: 17px; }
+  .rule span { color: #c9cff0; font-size: 14px; }
+
+  section { padding-top: 12px; }
+  section h2 { color: var(--gold); font-size: 23px; margin: 28px 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--red); }
+  section h3 { color: var(--pink); font-size: 18px; margin: 20px 0 6px; }
+  .grp { margin: 40px 0 0; color: var(--muted); font-size: 13px; letter-spacing: .1em; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; font-size: 15px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .scroll { overflow-x: auto; }
+  kbd { display: inline-block; min-width: 1.6em; padding: 0 6px; border: 1px solid #4a5590; border-bottom-width: 3px; border-radius: 6px; background: var(--panel2); font: 13px/1.6 ui-monospace, monospace; text-align: center; color: #fff; }
+  .tip { background: var(--panel); border-left: 4px solid var(--gold); border-radius: 0 12px 12px 0; padding: 10px 14px; margin: 12px 0; }
+  .warn { border-left-color: var(--red); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--panel2); color: var(--blue); margin-left: 6px; vertical-align: 2px; }
+  .ev { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+  .ev div { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .ev b { color: var(--gold); font-size: 17px; }
+  .ev p { margin: 4px 0 0; font-size: 14px; color: #c9cff0; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px 14px; margin: 8px 0; }
+  details[open] { padding-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+  mark { background: var(--mark); color: inherit; border-radius: 3px; }
+  .empty { display: none; text-align: center; color: var(--muted); padding: 40px 0; }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); margin-top: 48px; padding-top: 16px; }
+
+  @media (max-width: 860px) {
+    .wrap { grid-template-columns: minmax(0, 1fr); }
+    .menu-btn { display: block; }
+    nav.toc { position: fixed; top: 0; left: 0; bottom: 0; width: min(300px, 86vw); max-height: none; background: var(--bg); border-right: 1px solid var(--line); padding: 72px 16px 32px; transform: translateX(-102%); transition: transform .2s; z-index: 15; }
+    nav.toc.open { transform: none; box-shadow: 8px 0 30px #0008; }
+    .brand small, .brand .t { display: none; }
+    .play { display: none; }
+    .rules, .ev { grid-template-columns: minmax(0, 1fr); }
+    .hero h1 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <button class="menu-btn" id="menuBtn" aria-label="目錄" aria-controls="toc" aria-expanded="false">☰</button>
+  <a class="brand" href="#top"><img src="../apple-touch-icon.png" alt=""><span class="t" lang="zh-Hant">霍將軍爬101大樓 <small>遊戲說明</small></span><span class="t" lang="en">General Huo Climbs 101 <small>Guide</small></span></a>
+  <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <input id="q" type="search" autocomplete="off" placeholder="搜尋玩法，例如：老鷹、改名、尖塔" aria-label="搜尋"></label>
+  <div class="pill" role="group" aria-label="Language"><button id="lzh" type="button">中文</button><button id="len" type="button">EN</button></div>
+  <a class="play" id="playLink" href="../"><span lang="zh-Hant">開始遊戲 ›</span><span lang="en">Play ›</span></a>
+</div></header>
+
+<div class="wrap" id="top">
+<nav class="toc" id="toc" aria-label="目錄"></nav>
+<main id="content">
+
+<div class="hero">
+  <div lang="zh-Hant">
+    <h1>霍將軍爬101大樓 · 遊戲說明</h1>
+    <p>紅衣攀爬者「霍將軍」從台北 101 的 1F 徒手爬上塔尖，一共 14 關。遇到強風、下雨、老鷹就停下來抓牢，一旦墜落就從 1F 重來。這份說明照遊戲流程整理，可以用目錄（手機點左上 ☰）或上方搜尋找想看的段落。</p>
+  </div>
+  <div lang="en">
+    <h1>General Huo Climbs 101 · Player guide</h1>
+    <p>The climber in red, General Huo, climbs Taipei 101 bare-handed from 1F to the spire tip, across 14 levels. Stop and hold on when wind, rain or an eagle comes. Fall once and you start over from 1F. This guide follows the order you meet things in the game: use the contents (☰ on phones) or the search box at the top.</p>
+  </div>
+  <div class="rules">
+    <div class="rule"><b lang="zh-Hant">放開＝抓牢</b><b lang="en">Let go = hold on</b><span lang="zh-Hant">不按方向鍵、手指離開，將軍就緊抓牆面，風險值會下降。</span><span lang="en">With no key or finger down the climber grips the wall and risk goes down.</span></div>
+    <div class="rule"><b lang="zh-Hant">危機時不要動</b><b lang="en">Freeze in a crisis</b><span lang="zh-Hant">強風、下雨、老鷹出現時，亂動就會被吹走、手滑或被撲下來。</span><span lang="en">Moving in wind, rain or with an eagle out gets you blown off, slipping or knocked down.</span></div>
+    <div class="rule"><b lang="zh-Hant">墜落回 1F</b><b lang="en">A fall means 1F</b><span lang="zh-Hant">不論在第幾關掉下去，都從 1F 重新開始，解鎖的關卡也會重新上鎖。</span><span lang="en">Whatever level you fall from, you restart at 1F and the unlocked levels lock again.</span></div>
+  </div>
+</div>
+
+<!-- ============================== 開始 -->
+<section id="boot" data-group="start">
+  <div lang="zh-Hant">
+    <h2>啟動與載入</h2>
+    <p>打開網頁會先看到載入畫面，依序完成六個項目才會進入主畫面：</p>
+    <ol>
+      <li><b>讀取遊戲設定</b>：關卡資料，完成時顯示「14 關」。</li>
+      <li><b>載入帳號</b>：已登入 Google 會顯示名稱，沒登入就是「訪客模式」，旁邊附上你的最佳紀錄。</li>
+      <li><b>天氣系統</b>：風、雨、老鷹。</li>
+      <li><b>NPC 載入</b>：窗戶裡的路人、員工、觀光客。</li>
+      <li><b>音效</b>：顯示目前音量（靜音時會註明）。</li>
+      <li><b>場景渲染</b>：主畫面與圖示。</li>
+    </ol>
+    <p>任何一項失敗會顯示「載入失敗」與 <b>重試</b> 按鈕，按下去重新載入即可。雲端無法連線時不會卡住，會改用訪客模式繼續。</p>
+  </div>
+  <div lang="en">
+    <h2>Starting up</h2>
+    <p>The page opens on a loading screen. Six steps must finish before the main menu appears:</p>
+    <ol>
+      <li><b>Game settings</b>: the level data (it reports "14 levels").</li>
+      <li><b>Account</b>: your Google name if signed in, otherwise "guest mode", with your best record.</li>
+      <li><b>Weather</b>: wind, rain and eagles.</li>
+      <li><b>NPCs</b>: the people behind the windows.</li>
+      <li><b>Sound</b>: your current volume (and whether it is muted).</li>
+      <li><b>Rendering</b>: the main menu and its icons.</li>
+    </ol>
+    <p>If a step fails it says so and shows a <b>Retry</b> button. If the cloud cannot be reached the game carries on in guest mode.</p>
+  </div>
+</section>
+
+<section id="intro" data-group="start">
+  <div lang="zh-Hant">
+    <h2>開場動畫</h2>
+    <p>每次打開網頁，主畫面上會先播一段約 3 秒的開場插畫：紅衣攀爬者的背影與台北天際線，慢慢放大後淡入主畫面。同一次開網頁只播一次。</p>
+    <p>按下「開始遊戲」或從選關進入時，還有約 2 秒的鏡頭拉近塔底。這兩段都可以<b>點擊或按任意鍵略過</b>（剛開始的一瞬間不接受，避免同一下點擊直接跳過）。墜落重來不會再播。</p>
+  </div>
+  <div lang="en">
+    <h2>Opening</h2>
+    <p>Each time you open the page, a 3-second opening plays over the menu: the climber in red from behind, the Taipei skyline, a slow zoom and a fade into the menu. It plays once per visit.</p>
+    <p>Starting a game (or a level from Levels) adds a 2-second camera push in to the foot of the tower. Both can be skipped by <b>tapping or pressing any key</b> (not in the first instant, so the click that started it does not skip it). Restarting after a fall does not replay them.</p>
+  </div>
+</section>
+
+<!-- ============================== 主畫面 -->
+<section id="home" data-group="home">
+  <div lang="zh-Hant">
+    <h2>主畫面總覽</h2>
+    <p>左邊是選單，右邊是 101。各區塊功能：</p>
+    <div class="scroll"><table>
+      <tr><th>位置</th><th>項目</th><th>做什麼</th></tr>
+      <tr><td>左側選單</td><td><b>開始遊戲</b></td><td>從第 1 關（1F）開始一整趟攀爬。</td></tr>
+      <tr><td></td><td>選擇關卡</td><td>從已解鎖的關卡接著玩，見<a href="#unlock">關卡解鎖與周目</a>。</td></tr>
+      <tr><td></td><td>練習模式</td><td>三層樓平房暖身，見<a href="#practice">練習模式</a>。</td></tr>
+      <tr><td></td><td>登頂排行榜</td><td>總周目與最快時間兩個分頁，見<a href="#leaderboard">登頂排行榜</a>。</td></tr>
+      <tr><td></td><td>設定</td><td>音量、震動、閃光效果，見<a href="#settings">設定與音量</a>。</td></tr>
+      <tr><td>選單底部</td><td>周目／最佳紀錄</td><td>「第 N 周目 · 已登頂 X 次」與本機最佳紀錄（最高樓層或登頂時間）。</td></tr>
+      <tr><td>右上</td><td>🌐 中文 / EN ｜ 全螢幕</td><td>切換語言、進入全螢幕。</td></tr>
+      <tr><td></td><td>帳號膠囊</td><td>未登入顯示「Google 登入」；登入後顯示「雲端存檔已開啟」與 email，點開帳號面板。</td></tr>
+      <tr><td></td><td>喇叭鈕</td><td>一鍵靜音／開聲音。</td></tr>
+      <tr><td>底部</td><td>提示列、地點</td><td>操作小提示與目前地點；點提示列可開啟這份說明。</td></tr>
+    </table></div>
+    <p>手機直拿時，帳號膠囊與喇叭鈕會排到第二列，提示列與地點改為置中。</p>
+  </div>
+  <div lang="en">
+    <h2>Main menu</h2>
+    <p>The menu is on the left and Taipei 101 on the right:</p>
+    <div class="scroll"><table>
+      <tr><th>Where</th><th>Item</th><th>What it does</th></tr>
+      <tr><td>Left menu</td><td><b>Start</b></td><td>A full climb from level 1 (1F).</td></tr>
+      <tr><td></td><td>Levels</td><td>Continue from a level you have unlocked. See <a href="#unlock">Unlocks and rounds</a>.</td></tr>
+      <tr><td></td><td>Practice</td><td>A three-storey warm-up. See <a href="#practice">Practice mode</a>.</td></tr>
+      <tr><td></td><td>Summit ranking</td><td>Two tabs: rounds and fastest time. See <a href="#leaderboard">Summit ranking</a>.</td></tr>
+      <tr><td></td><td>Settings</td><td>Volume, vibration, flash effects. See <a href="#settings">Settings and sound</a>.</td></tr>
+      <tr><td>Below the menu</td><td>Round / best</td><td>"Round N · X summits" and your best record on this device.</td></tr>
+      <tr><td>Top right</td><td>🌐 中文 / EN | Fullscreen</td><td>Switch language, go fullscreen.</td></tr>
+      <tr><td></td><td>Account chip</td><td>"Sign in" when signed out; "Cloud save on" and your email when signed in (opens the account panel).</td></tr>
+      <tr><td></td><td>Speaker</td><td>Mute or unmute.</td></tr>
+      <tr><td>Bottom</td><td>Tip line, place</td><td>A play tip and where you are. Tap the tip line to open this guide.</td></tr>
+    </table></div>
+    <p>On a phone held upright the account chip and speaker move to a second row, and the tip and place are centred.</p>
+  </div>
+</section>
+
+<section id="language" data-group="home">
+  <div lang="zh-Hant">
+    <h2>語言與全螢幕</h2>
+    <h3>切換語言</h3>
+    <p>點右上膠囊的「🌐 中文 / EN」在繁體中文與英文之間切換，主畫面會重新載入一次。選擇會記在這台裝置上，下次打開維持同一種語言。</p>
+    <h3>全螢幕</h3>
+    <p>點膠囊右半邊的「全螢幕」。電腦與 Android 瀏覽器會直接進入全螢幕。</p>
+    <div class="tip"><b>iPhone</b>：Safari 不提供網頁全螢幕。請用 Safari 的「分享 → 加入主畫面」，之後從主畫面圖示打開就是全螢幕；從主畫面開啟時按全螢幕會提示「已是全螢幕」。</div>
+  </div>
+  <div lang="en">
+    <h2>Language and fullscreen</h2>
+    <h3>Language</h3>
+    <p>Tap "🌐 中文 / EN" on the top-right pill to switch between Traditional Chinese and English. The menu reloads once. Your choice is remembered on this device.</p>
+    <h3>Fullscreen</h3>
+    <p>Tap "Fullscreen" on the right half of the pill. Desktop and Android browsers go fullscreen straight away.</p>
+    <div class="tip"><b>iPhone</b>: Safari has no fullscreen for web pages. Use Safari's Share → Add to Home Screen and open the game from that icon. Opened that way, the button tells you it is already fullscreen.</div>
+  </div>
+</section>
+
+<section id="account" data-group="home">
+  <div lang="zh-Hant">
+    <h2>Google 登入與帳號</h2>
+    <p>不登入也能完整遊玩，進度存在這台裝置的瀏覽器。登入 Google 後，登頂次數與最快時間會上傳到雲端，登上排行榜。</p>
+    <h3>登入</h3>
+    <p>點右上「Google 登入」，會跳出 Google 的登入視窗。如果看到「瀏覽器擋住了登入視窗」，請允許這個網站的彈出視窗再按一次。</p>
+    <h3>帳號面板</h3>
+    <p>登入後點帳號膠囊打開帳號面板，可以：</p>
+    <ul>
+      <li><b>立即同步</b>：手動上傳還沒同步的登頂，旁邊顯示上次同步的時間。</li>
+      <li><b>玩家名稱 → 修改</b>：改排行榜上顯示的名字（規則見下方）。</li>
+      <li><b>登出</b>：回到訪客模式，裝置上的進度保留。</li>
+      <li><b>刪除帳號</b>（危險區域）：永久刪除雲端的登頂次數與排行榜紀錄，會再請你用 Google 確認一次，無法復原。這台裝置上的進度會留下來當訪客進度。</li>
+      <li>隱私權政策、服務條款連結。</li>
+    </ul>
+    <h3>玩家改名規則</h3>
+    <ul>
+      <li>去掉頭尾空白後 <b>2–12 個字</b>。</li>
+      <li>只能用中英文、數字、底線 <code>_</code>、空白、連字號 <code>-</code>。</li>
+      <li>名字後面的 <b>#編號</b> 由系統產生，不能修改，用來分辨同名玩家。</li>
+      <li>改名後要等 <b>30 秒</b>才能再改；太頻繁會提示稍後再試。</li>
+      <li>如果你已經在排行榜上，榜上的名字會一起更新，次數與時間不變。</li>
+    </ul>
+    <p>沒有改過名的話，名稱取自 Google 顯示名稱（最多 12 字）；角色頭上的名牌也會顯示這個名稱，訪客顯示「霍將軍」。</p>
+  </div>
+  <div lang="en">
+    <h2>Google sign-in and account</h2>
+    <p>You can play everything without signing in; progress is kept in this browser. Signing in with Google uploads your summits and fastest time so they appear on the ranking.</p>
+    <h3>Signing in</h3>
+    <p>Tap "Sign in" at the top right and a Google window opens. If the game says the browser blocked the sign-in window, allow pop-ups for this site and try again.</p>
+    <h3>Account panel</h3>
+    <p>When signed in, tap the account chip:</p>
+    <ul>
+      <li><b>Sync now</b>: upload summits that are not synced yet. The last sync time is shown next to it.</li>
+      <li><b>Player name → Edit</b>: change the name on the ranking (rules below).</li>
+      <li><b>Sign out</b>: back to guest mode; progress on this device stays.</li>
+      <li><b>Delete account</b> (danger zone): permanently deletes your cloud summits and ranking entry after you confirm with Google again. Progress on this device stays as guest progress.</li>
+      <li>Links to the privacy policy and terms.</li>
+    </ul>
+    <h3>Name rules</h3>
+    <ul>
+      <li><b>2–12 characters</b> after trimming spaces at both ends.</li>
+      <li>Letters (Chinese or English), digits, underscore <code>_</code>, space and hyphen <code>-</code> only.</li>
+      <li>The <b>#number</b> after your name is made by the system and cannot be changed; it tells players with the same name apart.</li>
+      <li>Wait <b>30 seconds</b> between changes.</li>
+      <li>If you are already on the ranking, your entry is renamed too; counts and times stay.</li>
+    </ul>
+    <p>Until you change it, your name comes from your Google display name (up to 12 characters). The name tag above the climber shows it too; guests see "Gen. Huo".</p>
+  </div>
+</section>
+
+<section id="leaderboard" data-group="home">
+  <div lang="zh-Hant">
+    <h2>登頂排行榜</h2>
+    <p>主畫面「登頂排行榜」有兩個分頁，各列出前 20 名：</p>
+    <div class="scroll"><table>
+      <tr><th>分頁</th><th>排名依據</th><th>上榜條件</th></tr>
+      <tr><td><b>總周目</b></td><td>累計登頂次數多的在前；次數相同時，先達到的在前。</td><td>登入 Google 並至少登頂一次。</td></tr>
+      <tr><td><b>最快時間</b></td><td>一趟攀爬的時間短的在前，以現實攀爬時間顯示。</td><td>登入 Google，且<b>從第 1 關一次爬到塔尖、中途不墜落</b>。從選關中途接著玩的不計時。</td></tr>
+    </table></div>
+    <p>訪客的登頂會先記在裝置上，登入後自動補上傳，不會遺漏也不會重複計算。</p>
+  </div>
+  <div lang="en">
+    <h2>Summit ranking</h2>
+    <p>"Summit ranking" on the menu has two tabs, each showing the top 20:</p>
+    <div class="scroll"><table>
+      <tr><th>Tab</th><th>Ranked by</th><th>To get on it</th></tr>
+      <tr><td><b>Rounds</b></td><td>Most summits first; on a tie, whoever got there first.</td><td>Sign in and reach the top at least once.</td></tr>
+      <tr><td><b>Fastest</b></td><td>Shortest climb first, shown as real climbing time.</td><td>Sign in and climb <b>from level 1 to the tip in one go without falling</b>. A run continued from Levels is not timed.</td></tr>
+    </table></div>
+    <p>Summits made as a guest are kept on the device and uploaded after you sign in, never lost and never counted twice.</p>
+  </div>
+</section>
+
+<section id="settings" data-group="home">
+  <div lang="zh-Hant">
+    <h2>設定與音量</h2>
+    <ul>
+      <li><b>音量</b>：調整音效與背景音樂的大小。主畫面右上的喇叭鈕可以一鍵靜音。</li>
+      <li><b>震動</b>：支援的手機上開關震動回饋。</li>
+      <li><b>閃光效果</b>：關掉後不會有閃電與危機時的畫面閃爍，對閃光敏感的玩家建議關閉。</li>
+    </ul>
+    <p>設定頁最下方「完成」鈕下面顯示目前版本，例如「版本 v1.0.0」，回報問題時可以附上。</p>
+    <div class="tip">瀏覽器規定要等你第一次點擊或按鍵後才能出聲，所以剛打開網頁時沒有聲音是正常的。遊戲的音效與音樂都是即時合成的原創聲音。</div>
+  </div>
+  <div lang="en">
+    <h2>Settings and sound</h2>
+    <ul>
+      <li><b>Volume</b>: sound effects and music. The speaker button on the menu mutes in one tap.</li>
+      <li><b>Vibration</b>: vibration feedback on phones that support it.</li>
+      <li><b>Flashes</b>: turn off lightning and the crisis screen flash if you are sensitive to flashing light.</li>
+    </ul>
+    <p>The game version (for example "Version v1.0.0") is shown under the Done button; include it when you report a problem.</p>
+    <div class="tip">Browsers only allow sound after your first tap or key press, so silence right after the page opens is normal. All music and sound effects are original and synthesised live.</div>
+  </div>
+</section>
+
+<!-- ============================== 玩法 -->
+<section id="controls" data-group="play">
+  <div lang="zh-Hant">
+    <h2>操作方式</h2>
+    <div class="scroll"><table>
+      <tr><th>動作</th><th>電腦</th><th>手機／平板</th></tr>
+      <tr><td>攀爬（上下左右，可斜向）</td><td><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>在畫面<b>下半部</b>按住拖曳（虛擬搖桿，八方向）</td></tr>
+      <tr><td><b>抓牢</b></td><td>放開所有方向鍵</td><td>手指離開畫面</td></tr>
+      <tr><td>旋轉視角（繞塔一圈）</td><td><kbd>Q</kbd> <kbd>E</kbd> 或滑鼠拖曳</td><td>在畫面<b>上半部</b>左右拖曳</td></tr>
+      <tr><td>暫停／繼續</td><td><kbd>Esc</kbd> 或右上暫停鈕</td><td>右上暫停鈕</td></tr>
+      <tr><td>確認（再爬一次、略過結束動畫）</td><td><kbd>空白鍵</kbd> 或 <kbd>Enter</kbd></td><td>點擊畫面</td></tr>
+      <tr><td>退出回主畫面</td><td><kbd>X</kbd> 或「退出」</td><td>「退出」</td></tr>
+    </table></div>
+    <p>同時按上和左右時，會先往上爬；上面被擋住才往旁邊移。每爬一格大約 0.35 秒。</p>
+    <p>「退出」只在<b>該關起點</b>、<b>暫停中</b>、<b>墜落後</b>或<b>結算畫面</b>出現，攀爬途中要先暫停才能退出。</p>
+  </div>
+  <div lang="en">
+    <h2>Controls</h2>
+    <div class="scroll"><table>
+      <tr><th>Action</th><th>Computer</th><th>Phone / tablet</th></tr>
+      <tr><td>Climb (up, down, sideways, diagonal)</td><td><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>Drag in the <b>lower half</b> of the screen (8-way virtual stick)</td></tr>
+      <tr><td><b>Hold on</b></td><td>Release every direction key</td><td>Lift your finger</td></tr>
+      <tr><td>Turn the view round the tower</td><td><kbd>Q</kbd> <kbd>E</kbd> or drag with the mouse</td><td>Drag sideways in the <b>upper half</b></td></tr>
+      <tr><td>Pause / resume</td><td><kbd>Esc</kbd> or the pause button (top right)</td><td>Pause button (top right)</td></tr>
+      <tr><td>Confirm (climb again, skip the ending)</td><td><kbd>Space</kbd> or <kbd>Enter</kbd></td><td>Tap</td></tr>
+      <tr><td>Exit to the menu</td><td><kbd>X</kbd> or "Exit"</td><td>"Exit"</td></tr>
+    </table></div>
+    <p>Holding up together with left or right climbs up first and only moves sideways when the way up is blocked. Each cell takes about 0.35 s.</p>
+    <p>"Exit" only appears at <b>a level's starting point</b>, <b>while paused</b>, <b>after a fall</b> or <b>on a result screen</b>. Mid-climb, pause first.</p>
+  </div>
+</section>
+
+<section id="climbing" data-group="play">
+  <div lang="zh-Hant">
+    <h2>攀爬規則</h2>
+    <p>101 的外牆被切成一格一格的窗格，<b>每層樓 12 列</b>。你可以繞著塔的四面爬，鏡頭跟著繞塔軸旋轉。</p>
+    <h3>安全欄與危險欄</h3>
+    <p>每一面靠近<b>轉角的欄是危險區</b>，中間是安全區。待在危險區風險值會一直上升；繞到另一面一定會經過轉角，要快速通過。越往上牆越窄，安全欄越少。竹節（第 4–11 關）每節最上面兩層樓是外斜的「花瓣」，兩側各多一欄危險區。</p>
+    <h3>障礙物</h3>
+    <p>牆上灰色的出風口設備不能抓，要往旁邊繞開。每一關都保證有一條<b>只走安全欄</b>就能到頂的路。</p>
+    <h3>平台</h3>
+    <p>多數關卡的起點是一個平台（塔底廣場、竹節的外展平台、頂部屋頂）。站在平台上可以左右走動，沒有危險區、風險值會下降，只有天氣事件仍然算數。</p>
+    <h3>尖塔（第 13–14 關）</h3>
+    <p>尖塔改成爬梯：只能上下，不能左右。強風時一樣要抓牢。</p>
+    <div class="tip">窗戶裡的路人、員工、觀光客會對你揮手或拍照，看到你遇到危險或墜落時會露出擔心的表情。純屬氣氛，不影響遊戲。</div>
+  </div>
+  <div lang="en">
+    <h2>How climbing works</h2>
+    <p>The facade of 101 is a grid of window cells, <b>12 rows per floor</b>. You can climb round all four faces; the camera turns round the tower with you.</p>
+    <h3>Safe and danger columns</h3>
+    <p>On each face, the <b>columns next to the corners are danger zones</b> and the middle ones are safe. Risk keeps rising while you are in a danger column. Going round to another face always crosses a corner, so do it quickly. The walls get narrower higher up, leaving fewer safe columns. On the pagoda sections (levels 4–11) the top two floors of each section flare outwards and add one more danger column on each side.</p>
+    <h3>Obstacles</h3>
+    <p>Grey vent units on the glass cannot be gripped; go round them. Every level always has a route to the top that uses <b>only safe columns</b>.</p>
+    <h3>Platforms</h3>
+    <p>Most levels start on a platform (the plaza, a section ledge, the roof). On a platform you can walk sideways, there is no danger zone and risk goes down. Weather events still count.</p>
+    <h3>The spire (levels 13–14)</h3>
+    <p>The spire is a ladder: up and down only. Hold on in strong wind just the same.</p>
+    <div class="tip">People behind the windows wave or take photos as you pass and look worried when you are in danger or fall. It is just for atmosphere.</div>
+  </div>
+</section>
+
+<section id="risk" data-group="play">
+  <div lang="zh-Hant">
+    <h2>風險值</h2>
+    <p>畫面左側的直條與上方「風險 N%」膠囊就是風險值，<b>到 100% 就會墜落</b>。風險值不會因為換關而歸零，會帶到下一關。</p>
+    <div class="scroll"><table>
+      <tr><th>情況</th><th>每秒變化</th></tr>
+      <tr><td>在安全欄<b>抓牢</b>（不動）或站在平台上</td><td>−20%</td></tr>
+      <tr><td>在安全欄攀爬</td><td>−5%</td></tr>
+      <tr><td>在危險欄（轉角）</td><td>+15%</td></tr>
+      <tr><td>強風中還在移動</td><td>再 +25%</td></tr>
+    </table></div>
+    <div class="scroll"><table>
+      <tr><th>等級</th><th>範圍</th><th>影響</th></tr>
+      <tr><td>安全</td><td>0–39%</td><td>正常。</td></tr>
+      <tr><td>緊張</td><td>40–69%</td><td>膠囊變色提醒。</td></tr>
+      <tr><td>危機</td><td>70% 以上</td><td>手開始抖，每一步要按住一下才會動。</td></tr>
+    </table></div>
+    <div class="tip">放開方向鍵約 0.1 秒後才算「抓牢」。風險偏高時，找一個安全欄停下來等它降下來再繼續。</div>
+  </div>
+  <div lang="en">
+    <h2>Risk</h2>
+    <p>The bar on the left and the "Risk N%" capsule show your risk. <b>At 100% you fall.</b> Risk is not reset between levels; it carries on into the next one.</p>
+    <div class="scroll"><table>
+      <tr><th>Situation</th><th>Per second</th></tr>
+      <tr><td><b>Holding on</b> in a safe column, or standing on a platform</td><td>−20%</td></tr>
+      <tr><td>Climbing in a safe column</td><td>−5%</td></tr>
+      <tr><td>In a danger column (corner)</td><td>+15%</td></tr>
+      <tr><td>Moving during strong wind</td><td>another +25%</td></tr>
+    </table></div>
+    <div class="scroll"><table>
+      <tr><th>Level</th><th>Range</th><th>Effect</th></tr>
+      <tr><td>Safe</td><td>0–39%</td><td>Normal.</td></tr>
+      <tr><td>Tense</td><td>40–69%</td><td>The capsule changes colour.</td></tr>
+      <tr><td>Crisis</td><td>70% and up</td><td>Your hands shake: each step needs a short hold before it moves.</td></tr>
+    </table></div>
+    <div class="tip">You count as holding on about 0.1 s after letting go. When risk is high, stop in a safe column and wait for it to drop.</div>
+  </div>
+</section>
+
+<section id="events" data-group="play">
+  <div lang="zh-Hant">
+    <h2>危機事件：強風、下雨、老鷹</h2>
+    <p>事件來之前約 <b>1 秒</b>會先出現警告，左上角有事件圖示（風／雨／鷹）與剩餘時間條。<b>同一時間只會有一個事件</b>：前一個結束後至少隔 4 秒才會來下一個。</p>
+    <div class="ev">
+      <div><b lang="zh-Hant">🌬 強風</b><p>持續 10–20 秒。強風中移動會每秒被吹向較近的轉角一格（危險區），風險值也大漲。<b>完全不動就沒事。</b></p></div>
+      <div><b lang="zh-Hant">🌧 下雨</b><p>持續 20–30 秒，開始時有閃電。手會滑：雨中<b>連續移動超過約 0.3 秒就會滑落</b>。完全停下，等雨停再爬。</p></div>
+      <div><b lang="zh-Hant">🦅 老鷹</b><p>出現約 3 秒。只要一動，老鷹就會紅眼盯上你，0.6 秒後俯衝撲向你被盯上時的位置。<b>一動都不要動</b>；被盯上後趕快橫向或縱向離開那個位置還有機會躲過。</p></div>
+    </div>
+    <div class="scroll"><table>
+      <tr><th>事件</th><th>第一次出現（遊戲時間）</th><th>之後</th></tr>
+      <tr><td>強風</td><td>約 1 分鐘</td><td>每分鐘擲一次機率，機率依關卡從 0%（第 1 關）升到 70%</td></tr>
+      <tr><td>老鷹</td><td>約 1 分 30 秒</td><td>每 2 分鐘</td></tr>
+      <tr><td>下雨</td><td>約 10 分鐘</td><td>每 10 分鐘</td></tr>
+    </table></div>
+    <p>時間只算「攀爬中」：暫停、過場、墜落動畫都不計。事件都由這一趟的<b>種子</b>決定，墜落或結算畫面會顯示種子號碼。</p>
+  </div>
+  <div lang="en">
+    <h2>Crisis events: wind, rain, eagle</h2>
+    <p>About <b>1 second</b> before an event there is a warning, and its icon (wind / rain / eagle) with a time bar shows at the top left. <b>Only one event happens at a time</b>, with at least 4 seconds between one ending and the next starting.</p>
+    <div class="ev">
+      <div><b lang="en">🌬 Strong wind</b><p>10–20 s. Moving in the wind pushes you one cell towards the nearer corner (a danger column) every second, and risk shoots up. <b>Keep still and nothing happens.</b></p></div>
+      <div><b lang="en">🌧 Rain</b><p>20–30 s, starting with lightning. Your hands slip: <b>moving for more than about 0.3 s in a row makes you fall</b>. Stop completely until it is over.</p></div>
+      <div><b lang="en">🦅 Eagle</b><p>Out for about 3 s. Any move and its eyes turn red; 0.6 s later it dives at where you were when it locked on. <b>Do not move at all.</b> If it has locked on, get out of that spot fast and it may miss.</p></div>
+    </div>
+    <div class="scroll"><table>
+      <tr><th>Event</th><th>First time (game time)</th><th>After that</th></tr>
+      <tr><td>Wind</td><td>about 1 min</td><td>a roll every minute; the chance rises from 0% (level 1) to 70%</td></tr>
+      <tr><td>Eagle</td><td>about 1 min 30 s</td><td>every 2 min</td></tr>
+      <tr><td>Rain</td><td>about 10 min</td><td>every 10 min</td></tr>
+    </table></div>
+    <p>Only climbing time counts: pause, level transitions and fall animations do not. Every event comes from the run's <b>seed</b>, shown on the fall and result screens.</p>
+  </div>
+</section>
+
+<section id="fall" data-group="play">
+  <div lang="zh-Hant">
+    <h2>墜落與重來</h2>
+    <p>以下情況會墜落，畫面會顯示原因：</p>
+    <div class="scroll"><table>
+      <tr><th>畫面訊息</th><th>原因</th></tr>
+      <tr><td>太靠邊了…</td><td>在危險欄待太久，風險到 100%。</td></tr>
+      <tr><td>風大時要抓牢</td><td>強風中亂動，風險到 100%。</td></tr>
+      <tr><td>雨天手滑了</td><td>雨中連續移動太久。</td></tr>
+      <tr><td>被老鷹撲下來了</td><td>老鷹俯衝撲中。</td></tr>
+    </table></div>
+    <p>墜落後會顯示這趟的最高樓層、現實攀爬時間與種子，<b>點擊或按空白鍵從 1F 再爬一次</b>。不論你是從第幾關開始的，墜落一律回到 1F，時間歸零，選關裡已解鎖的關卡也會重新上鎖。最高樓層會記進本機最佳紀錄。</p>
+  </div>
+  <div lang="en">
+    <h2>Falling and starting over</h2>
+    <p>You fall in these cases, and the screen tells you why:</p>
+    <div class="scroll"><table>
+      <tr><th>Message</th><th>Cause</th></tr>
+      <tr><td>Too close to the edge…</td><td>Too long in a danger column; risk reached 100%.</td></tr>
+      <tr><td>Hold on when the wind blows</td><td>Moving in strong wind; risk reached 100%.</td></tr>
+      <tr><td>Your hands slipped in the rain</td><td>Moving too long in the rain.</td></tr>
+      <tr><td>The eagle knocked you off</td><td>The eagle's dive hit you.</td></tr>
+    </table></div>
+    <p>The fall screen shows the highest floor, the real climbing time and the seed. <b>Tap or press Space to climb again from 1F.</b> Whichever level you started from, a fall always sends you back to 1F, the time resets and the unlocked levels lock again. Your highest floor is saved as your best record on this device.</p>
+  </div>
+</section>
+
+<section id="levels" data-group="play">
+  <div lang="zh-Hant">
+    <h2>14 關一覽</h2>
+    <p>基座 3 關、竹節 8 關、頂部 1 關、尖塔 2 關。「欄數」是每一面的寬度（含兩側危險欄）。強風機率是每分鐘擲一次的機率。</p>
+    <div class="scroll"><table>
+      <tr><th>關</th><th>名稱</th><th>樓層</th><th>每面欄數</th><th>強風機率</th></tr>
+      <tr><td>1</td><td>基座下段</td><td>1–8F</td><td>11</td><td>0%</td></tr>
+      <tr><td>2</td><td>基座中段</td><td>9–17F</td><td>11</td><td>20%</td></tr>
+      <tr><td>3</td><td>基座上段</td><td>18–26F</td><td>9</td><td>25%</td></tr>
+      <tr><td>4</td><td>第1節</td><td>27–34F</td><td>9</td><td>30%</td></tr>
+      <tr><td>5</td><td>第2節</td><td>35–42F</td><td>9</td><td>35%</td></tr>
+      <tr><td>6</td><td>第3節</td><td>43–50F</td><td>9</td><td>40%</td></tr>
+      <tr><td>7</td><td>第4節</td><td>51–58F</td><td>7</td><td>45%</td></tr>
+      <tr><td>8</td><td>第5節</td><td>59–66F</td><td>7</td><td>50%</td></tr>
+      <tr><td>9</td><td>第6節</td><td>67–74F</td><td>5</td><td>55%</td></tr>
+      <tr><td>10</td><td>第7節</td><td>75–82F</td><td>5</td><td>60%</td></tr>
+      <tr><td>11</td><td>第8節</td><td>83–90F</td><td>5</td><td>65%</td></tr>
+      <tr><td>12</td><td>頂部樓層</td><td>91–101F</td><td>4</td><td>70%</td></tr>
+      <tr><td>13</td><td>尖塔下段</td><td>尖塔（爬梯）</td><td>1</td><td>70%</td></tr>
+      <tr><td>14</td><td>尖塔上段</td><td>尖塔到塔尖（爬梯）</td><td>1</td><td>70%</td></tr>
+    </table></div>
+    <p>爬到一關的最上面就會自動接到下一關：站上平台、鏡頭往上移、顯示「第 N 關完成」與下一關名稱，沒有黑畫面。風險值、時間與事件會接著算。</p>
+  </div>
+  <div lang="en">
+    <h2>The 14 levels</h2>
+    <p>3 base levels, 8 pagoda sections, the top floors and 2 spire levels. "Columns" is the width of each face, danger columns included. The wind chance is rolled once a minute.</p>
+    <div class="scroll"><table>
+      <tr><th>#</th><th>Name</th><th>Floors</th><th>Columns</th><th>Wind</th></tr>
+      <tr><td>1</td><td>Base, lower</td><td>1–8F</td><td>11</td><td>0%</td></tr>
+      <tr><td>2</td><td>Base, middle</td><td>9–17F</td><td>11</td><td>20%</td></tr>
+      <tr><td>3</td><td>Base, upper</td><td>18–26F</td><td>9</td><td>25%</td></tr>
+      <tr><td>4</td><td>Section 1</td><td>27–34F</td><td>9</td><td>30%</td></tr>
+      <tr><td>5</td><td>Section 2</td><td>35–42F</td><td>9</td><td>35%</td></tr>
+      <tr><td>6</td><td>Section 3</td><td>43–50F</td><td>9</td><td>40%</td></tr>
+      <tr><td>7</td><td>Section 4</td><td>51–58F</td><td>7</td><td>45%</td></tr>
+      <tr><td>8</td><td>Section 5</td><td>59–66F</td><td>7</td><td>50%</td></tr>
+      <tr><td>9</td><td>Section 6</td><td>67–74F</td><td>5</td><td>55%</td></tr>
+      <tr><td>10</td><td>Section 7</td><td>75–82F</td><td>5</td><td>60%</td></tr>
+      <tr><td>11</td><td>Section 8</td><td>83–90F</td><td>5</td><td>65%</td></tr>
+      <tr><td>12</td><td>Top floors</td><td>91–101F</td><td>4</td><td>70%</td></tr>
+      <tr><td>13</td><td>Spire, lower</td><td>Spire (ladder)</td><td>1</td><td>70%</td></tr>
+      <tr><td>14</td><td>Spire, upper</td><td>Spire to the tip (ladder)</td><td>1</td><td>70%</td></tr>
+    </table></div>
+    <p>Reaching the top of a level leads straight into the next: you stand on the platform, the camera rises and "Level N cleared" shows the next level's name, with no black screen. Risk, time and events carry on.</p>
+  </div>
+</section>
+
+<section id="hud" data-group="play">
+  <div lang="zh-Hant">
+    <h2>關卡畫面說明</h2>
+    <ul>
+      <li><b>左上</b>：目前事件圖示與時間條；上方顯示「第 N 關 名稱 樓層」。</li>
+      <li><b>左側</b>：風險條，上面是「風險 N%」膠囊，緊張與危機時變色。</li>
+      <li><b>右上</b>：暫停鈕、「現實時間 1小時39分」（見<a href="#realtime">現實攀爬時間</a>）。</li>
+      <li><b>101 小地圖</b>：你在整棟樓的位置，旁邊「完成 32.1%」是整趟 14 關已爬的比例（到頂前不會顯示 100%）。</li>
+      <li><b>角色名牌</b>：登入後顯示你的玩家名稱，訪客顯示「霍將軍」。</li>
+    </ul>
+    <p>每關開始時會有關卡介紹與操作提示，練習模式則會說明三種事件。</p>
+  </div>
+  <div lang="en">
+    <h2>The level screen</h2>
+    <ul>
+      <li><b>Top left</b>: the current event's icon and time bar; above it, "Level N name floors".</li>
+      <li><b>Left</b>: the risk bar with the "Risk N%" capsule, which changes colour when tense or in crisis.</li>
+      <li><b>Top right</b>: pause button and "Real time 1h 39m" (see <a href="#realtime">Real climbing time</a>).</li>
+      <li><b>101 mini map</b>: where you are on the tower. "Done 32.1%" is how much of all 14 levels you have climbed (it never shows 100% before the top).</li>
+      <li><b>Name tag</b>: your player name when signed in, "Gen. Huo" for guests.</li>
+    </ul>
+    <p>Each level starts with its name and a short control reminder.</p>
+  </div>
+</section>
+
+<!-- ============================== 進度與紀錄 -->
+<section id="realtime" data-group="progress">
+  <div lang="zh-Hant">
+    <h2>現實攀爬時間</h2>
+    <p>真的徒手爬 101 要花好幾個小時，所以畫面上的時間會換算成「現實攀爬時間」：<b>遊戲裡 1 分鐘＝現實 9.5 分鐘</b>。分鐘以下無條件捨去。</p>
+    <div class="scroll"><table>
+      <tr><th>實際玩了（遊戲時間）</th><th>畫面顯示</th></tr>
+      <tr><td>1 分鐘</td><td>9分</td></tr>
+      <tr><td>5 分鐘</td><td>47分</td></tr>
+      <tr><td>10 分 30 秒</td><td>1小時39分</td></tr>
+      <tr><td>20 分鐘</td><td>3小時10分</td></tr>
+    </table></div>
+    <p>用在關卡右上的時間、墜落／練習完成／登頂結算、主畫面最佳紀錄與排行榜的最快時間。登頂結算另外會附上實際的「遊戲時間」（例如 10分30.4秒）。排名用的是實際遊戲時間，換算只是顯示方式，不影響名次。</p>
+  </div>
+  <div lang="en">
+    <h2>Real climbing time</h2>
+    <p>Climbing the real 101 by hand would take hours, so times on screen are shown as "real climbing time": <b>1 game minute = 9.5 real minutes</b>, rounded down to the minute.</p>
+    <div class="scroll"><table>
+      <tr><th>You played (game time)</th><th>Shown as</th></tr>
+      <tr><td>1 min</td><td>9m</td></tr>
+      <tr><td>5 min</td><td>47m</td></tr>
+      <tr><td>10 min 30 s</td><td>1h 39m</td></tr>
+      <tr><td>20 min</td><td>3h 10m</td></tr>
+    </table></div>
+    <p>It is used for the level timer, the fall / practice / summit results, your best record on the menu and the fastest-time ranking. The summit result also shows the actual game time (for example 10:30.4). Rankings use the actual game time; the conversion only changes how it is displayed.</p>
+  </div>
+</section>
+
+<section id="unlock" data-group="progress">
+  <div lang="zh-Hant">
+    <h2>關卡解鎖與周目</h2>
+    <ul>
+      <li><b>破一關開一關</b>：通過第 N 關，選擇關卡裡的第 N+1 關就會打開，關掉網頁再回來也還在，可以從那裡接著玩。</li>
+      <li><b>墜落就全部重來</b>：一旦墜落，解鎖重置，只剩第 1 關。</li>
+      <li><b>登頂完成一個周目</b>：看完登頂動畫後，周目數加 1、登頂次數加 1，關卡重新上鎖，開始下一個周目。</li>
+    </ul>
+    <p>主畫面選單底部會顯示「第 N 周目 · 已登頂 X 次」。這些進度都存在這台裝置的瀏覽器裡；清除網站資料會一起清掉。登入 Google 後，登頂次數會同步到雲端。</p>
+  </div>
+  <div lang="en">
+    <h2>Unlocks and rounds</h2>
+    <ul>
+      <li><b>Clear one, open one</b>: clearing level N opens level N+1 in Levels. It stays open after you close the page, so you can continue from there.</li>
+      <li><b>A fall resets everything</b>: after a fall only level 1 is open again.</li>
+      <li><b>Reaching the top completes a round</b>: after the summit ending your round count and summit count go up by one, the levels lock again and the next round begins.</li>
+    </ul>
+    <p>The menu shows "Round N · X summits". This progress lives in this browser; clearing the site's data clears it. When signed in, summits are synced to the cloud.</p>
+  </div>
+</section>
+
+<section id="ending" data-group="progress">
+  <div lang="zh-Hant">
+    <h2>登頂與結束動畫</h2>
+    <p>爬完第 14 關抵達塔尖時，會播放約 10 秒的結束動畫：霍將軍坐在塔頂邊緣、披風隨風飄動，鏡頭從側面拉近，再往上升、拉遠、繞一圈俯瞰台北街景，畫面中段出現「抵達塔尖！」。</p>
+    <p>動畫開始 1.5 秒後可以<b>點擊或按空白鍵略過</b>。接著是登頂結算：</p>
+    <ul>
+      <li>現實攀爬時間與遊戲時間</li>
+      <li>種子號碼</li>
+      <li>「完成第 N 周目 · 累計登頂 X 次」，關卡重新上鎖</li>
+    </ul>
+    <p>登入 Google 時會立刻把這次登頂加到雲端。結算畫面點擊或按空白鍵可以再玩一次，或按「退出」回主畫面。</p>
+  </div>
+  <div lang="en">
+    <h2>Reaching the top</h2>
+    <p>When you finish level 14 at the spire tip, a 10-second ending plays: General Huo sits on the edge of the summit with the cape streaming in the wind, while the camera moves in, rises, pulls back and circles over the streets of Taipei. "You reached the tip!" appears midway.</p>
+    <p>After 1.5 s you can <b>tap or press Space to skip</b> it. Then the summit result shows:</p>
+    <ul>
+      <li>real climbing time and game time</li>
+      <li>the seed</li>
+      <li>"Round N done · X summits"; the levels lock again</li>
+    </ul>
+    <p>If you are signed in, the summit is added to the cloud straight away. Tap or press Space to play again, or "Exit" to go back to the menu.</p>
+  </div>
+</section>
+
+<section id="practice" data-group="progress">
+  <div lang="zh-Hant">
+    <h2>練習模式</h2>
+    <p>主畫面「練習模式」是一棟<b>三層樓平房</b>，遠方看得到 101。適合第一次玩的人熟悉操作與三種事件。</p>
+    <ul>
+      <li>強風、下雨、老鷹<b>各示範一次</b>，依序出現在房子約 10%、40%、70% 的高度。</li>
+      <li>懲罰比正式關卡溫和：強風推移比較慢、風險漲比較慢、雨天容許時間與老鷹盯上的時間都比較長；事件長度用最短的時間。</li>
+      <li>天氣還沒示範完之前，最後一步爬不上屋頂，畫面會提示「抓牢等一下再上屋頂」。</li>
+      <li>墜落就回地面再練一次；爬上屋頂顯示「練習完成」。</li>
+      <li><b>不計任何紀錄</b>：不影響最佳紀錄、解鎖、周目與排行榜。</li>
+    </ul>
+    <p>想直接進練習，可以在網址後面加 <code>?practice=1</code>。</p>
+  </div>
+  <div lang="en">
+    <h2>Practice mode</h2>
+    <p>"Practice" on the menu is a <b>three-storey house</b> with 101 in the distance, a good first stop to learn the controls and the three events.</p>
+    <ul>
+      <li>Wind, rain and an eagle <b>each come once</b>, at about 10%, 40% and 70% of the house's height.</li>
+      <li>Penalties are gentler: slower wind push and risk, more time before rain makes you slip and before the eagle spots you; events use their shortest length.</li>
+      <li>Until every demo has run, the last step onto the roof is blocked and the game tells you to hold on and wait.</li>
+      <li>Fall and you go back to the ground to try again; reach the roof and practice is complete.</li>
+      <li><b>Nothing is recorded</b>: best record, unlocks, rounds and the ranking are untouched.</li>
+    </ul>
+    <p>To go straight to practice, add <code>?practice=1</code> to the game's address.</p>
+  </div>
+</section>
+
+<!-- ============================== 其他 -->
+<section id="faq" data-group="more">
+  <div lang="zh-Hant">
+    <h2>常見問題</h2>
+    <details><summary>打開網頁沒有聲音？</summary><p>瀏覽器要等你第一次點擊或按鍵後才會出聲。如果點了還是沒聲音，看看主畫面右上的喇叭鈕是不是靜音，或到設定調整音量。</p></details>
+    <details><summary>手機上要怎麼爬？</summary><p>在畫面下半部按住拖曳就是搖桿，手指離開就是抓牢；上半部左右拖曳是轉視角。建議橫拿或加入主畫面全螢幕玩。</p></details>
+    <details><summary>為什麼我沒按，角色卻往旁邊移？</summary><p>那是強風把你往轉角吹。強風只在你移動時才會推你，放開方向鍵就不會被推。</p></details>
+    <details><summary>老鷹明明走了，我還是被撲下來？</summary><p>老鷹一旦紅眼盯上你就一定會俯衝，就算你停下來也一樣。被盯上時要立刻離開原位（上下或左右），距離夠遠才躲得過。最好的辦法是老鷹出現時完全不動。</p></details>
+    <details><summary>從選關中途開始，墜落為什麼回到 1F？</summary><p>這是遊戲的規則：不論從哪一關開始，墜落一律回 1F，解鎖的關卡也重新上鎖。</p></details>
+    <details><summary>登頂了，排行榜次數卻沒增加？</summary><p>先確認已經登入 Google。訪客的登頂會在登入後自動補上傳。另外為了防止灌次數，兩次計入雲端的登頂之間要隔一段時間，太快的登頂會先存在裝置上，之後同步時再補上，不會遺漏。可以在帳號面板按「立即同步」。</p></details>
+    <details><summary>最快時間為什麼沒有紀錄？</summary><p>最快時間只算<b>從第 1 關一次爬到塔尖、中途沒有墜落</b>的那一趟。從選關接著玩、練習模式都不計時。也要登入 Google 才會上榜。</p></details>
+    <details><summary>換手機或換瀏覽器，進度還在嗎？</summary><p>周目、解鎖與最佳紀錄存在原本裝置的瀏覽器。登入同一個 Google 帳號後，雲端的登頂次數與排行榜紀錄會跟著帳號走。</p></details>
+    <details><summary>「瀏覽器擋住了登入視窗」怎麼辦？</summary><p>允許這個網站的彈出視窗後再按一次「Google 登入」。在 App 內建的瀏覽器（例如通訊軟體裡開的連結）可能無法登入，請改用 Safari 或 Chrome 打開。</p></details>
+    <details><summary>畫面閃爍讓我不舒服？</summary><p>到設定關掉「閃光效果」，閃電與危機時的畫面閃爍都會停止。</p></details>
+    <details><summary>怎麼刪除我的資料？</summary><p>帳號面板 → 刪除帳號，會永久刪除雲端紀錄與登入帳號。裝置上的進度可用瀏覽器的「清除網站資料」移除。詳見<a href="../privacy.html">隱私權政策</a>。</p></details>
+  </div>
+  <div lang="en">
+    <h2>FAQ</h2>
+    <details><summary>There is no sound when the page opens.</summary><p>Browsers only play sound after your first tap or key press. If it is still silent, check the speaker button at the top right of the menu, or the volume in Settings.</p></details>
+    <details><summary>How do I climb on a phone?</summary><p>Drag in the lower half of the screen to use the stick; lift your finger to hold on. Drag sideways in the upper half to turn the view. Holding the phone sideways or adding the game to your home screen helps.</p></details>
+    <details><summary>Why did I move sideways without pressing anything?</summary><p>That is strong wind pushing you towards a corner. The wind only pushes you while you move, so let go of the keys.</p></details>
+    <details><summary>The eagle had gone but I was still knocked off.</summary><p>Once its eyes turn red the eagle always dives, even if you stop. When it locks on, leave that spot straight away (up, down or sideways); only far enough away will it miss. The best plan is not to move at all while it is out.</p></details>
+    <details><summary>I started from a later level; why does a fall send me to 1F?</summary><p>That is the rule: whichever level you start from, a fall always sends you back to 1F and the unlocked levels lock again.</p></details>
+    <details><summary>I reached the top but my count on the ranking did not go up.</summary><p>Make sure you are signed in; guest summits are uploaded after you sign in. To stop count farming, cloud summits must be some time apart. Summits made faster than that are kept on the device and added on a later sync, never lost. You can press "Sync now" in the account panel.</p></details>
+    <details><summary>Why do I have no fastest time?</summary><p>Only a run <b>from level 1 to the tip in one go without falling</b> is timed. Runs continued from Levels and practice are not. You also need to be signed in to appear on the ranking.</p></details>
+    <details><summary>Does my progress follow me to a new phone or browser?</summary><p>Rounds, unlocks and best record stay in the original browser. Your cloud summit count and ranking entry follow your Google account.</p></details>
+    <details><summary>"The browser blocked the sign-in window"</summary><p>Allow pop-ups for this site and tap "Sign in" again. In-app browsers (links opened inside chat apps) may not support sign-in; open the game in Safari or Chrome instead.</p></details>
+    <details><summary>The flashing bothers me.</summary><p>Turn off "Flashes" in Settings to stop lightning and the crisis flash.</p></details>
+    <details><summary>How do I delete my data?</summary><p>Account panel → Delete account permanently removes your cloud records and sign-in account. Progress on the device can be removed with the browser's "clear site data". See the <a href="../privacy.html">privacy policy</a>.</p></details>
+  </div>
+</section>
+
+<p class="empty" id="empty"><span lang="zh-Hant">找不到符合的內容，換個關鍵字試試。</span><span lang="en">Nothing matches. Try another word.</span></p>
+
+<footer>
+  <span lang="zh-Hant">霍將軍爬101大樓 · 免費瀏覽器遊戲 · <a href="../">回到遊戲</a> · <a href="../privacy.html">隱私權政策</a> · <a href="../terms.html">服務條款</a></span>
+  <span lang="en">General Huo Climbs 101 · a free browser game · <a href="../">Back to the game</a> · <a href="../privacy.html">Privacy</a> · <a href="../terms.html">Terms</a></span>
+</footer>
+</main>
+</div>
+
+<script>
+(function () {
+  var GROUPS = {
+    start: ['開始', 'Getting started'],
+    home: ['主畫面', 'Main menu'],
+    play: ['玩法', 'Playing'],
+    progress: ['進度與紀錄', 'Progress and records'],
+    more: ['其他', 'More']
+  };
+  var root = document.documentElement;
+  var toc = document.getElementById('toc');
+  var q = document.getElementById('q');
+  var empty = document.getElementById('empty');
+  var sections = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+  var originals = new Map();
+  sections.forEach(function (s) { originals.set(s, s.innerHTML); });
+
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+  function initialLang() {
+    var p = new URLSearchParams(location.search).get('lang');
+    if (p) return /^en/i.test(p) ? 'en' : 'zh';
+    var saved = store('gcr.guide.lang');
+    if (saved === 'en' || saved === 'zh') return saved;
+    return /^zh/i.test(navigator.language || 'zh') ? 'zh' : 'en';
+  }
+
+  function heading(s) {
+    var div = s.querySelector(root.dataset.lang === 'en' ? '[lang="en"]' : '[lang="zh-Hant"]');
+    var h = div && div.querySelector('h2');
+    return h ? h.textContent : s.id;
+  }
+
+  function buildToc() {
+    toc.innerHTML = '';
+    var en = root.dataset.lang === 'en';
+    var last = null;
+    sections.forEach(function (s) {
+      if (s.hidden) return;
+      var g = s.dataset.group;
+      if (g !== last) {
+        var h = document.createElement('h4');
+        h.textContent = GROUPS[g][en ? 1 : 0];
+        toc.appendChild(h);
+        last = g;
+      }
+      var a = document.createElement('a');
+      a.href = '#' + s.id;
+      a.textContent = heading(s);
+      a.dataset.id = s.id;
+      toc.appendChild(a);
+    });
+    spy();
+  }
+
+  function setLang(l) {
+    root.dataset.lang = l;
+    root.lang = l === 'en' ? 'en' : 'zh-Hant';
+    document.title = l === 'en' ? 'Guide · General Huo Climbs 101' : '遊戲說明 · 霍將軍爬101大樓';
+    q.placeholder = l === 'en' ? 'Search, e.g. eagle, rename, spire' : '搜尋玩法，例如：老鷹、改名、尖塔';
+    document.getElementById('lzh').setAttribute('aria-pressed', String(l === 'zh'));
+    document.getElementById('len').setAttribute('aria-pressed', String(l === 'en'));
+    store('gcr.guide.lang', l);
+    search();
+  }
+
+  function highlight(node, term) {
+    var walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+    var hits = [];
+    while (walker.nextNode()) {
+      var t = walker.currentNode;
+      if (t.nodeValue.toLowerCase().indexOf(term) >= 0) hits.push(t);
+    }
+    hits.forEach(function (t) {
+      var text = t.nodeValue, low = text.toLowerCase(), frag = document.createDocumentFragment(), i = 0, j;
+      while ((j = low.indexOf(term, i)) >= 0) {
+        frag.appendChild(document.createTextNode(text.slice(i, j)));
+        var m = document.createElement('mark');
+        m.textContent = text.slice(j, j + term.length);
+        frag.appendChild(m);
+        i = j + term.length;
+      }
+      frag.appendChild(document.createTextNode(text.slice(i)));
+      t.parentNode.replaceChild(frag, t);
+    });
+  }
+
+  function search() {
+    var term = q.value.trim().toLowerCase();
+    var sel = root.dataset.lang === 'en' ? '[lang="en"]' : '[lang="zh-Hant"]';
+    var shown = 0;
+    document.querySelector('.hero').hidden = !!term;
+    sections.forEach(function (s) {
+      s.innerHTML = originals.get(s);
+      if (!term) { s.hidden = false; shown++; return; }
+      var div = s.querySelector(sel);
+      var match = div && div.textContent.toLowerCase().indexOf(term) >= 0;
+      s.hidden = !match;
+      if (match) {
+        shown++;
+        highlight(div, term);
+        div.querySelectorAll('details').forEach(function (d) { if (d.querySelector('mark')) d.open = true; });
+      }
+    });
+    empty.style.display = shown ? 'none' : 'block';
+    buildToc();
+  }
+
+  function spy() {
+    var links = toc.querySelectorAll('a');
+    var current = null;
+    sections.forEach(function (s) { if (!s.hidden && s.getBoundingClientRect().top < 120) current = s.id; });
+    links.forEach(function (a) { a.classList.toggle('on', a.dataset.id === current); });
+  }
+
+  // Mobile contents drawer
+  var btn = document.getElementById('menuBtn');
+  function drawer(open) { toc.classList.toggle('open', open); btn.setAttribute('aria-expanded', String(open)); }
+  btn.addEventListener('click', function () { drawer(!toc.classList.contains('open')); });
+  toc.addEventListener('click', function (e) { if (e.target.tagName === 'A') drawer(false); });
+
+  document.getElementById('lzh').addEventListener('click', function () { setLang('zh'); });
+  document.getElementById('len').addEventListener('click', function () { setLang('en'); });
+  q.addEventListener('input', search);
+  q.addEventListener('keydown', function (e) { if (e.key === 'Escape') { q.value = ''; search(); } });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
+  });
+  window.addEventListener('scroll', spy, { passive: true });
+
+  setLang(initialLang());
+  if (location.hash) { var t = document.getElementById(location.hash.slice(1)); if (t) t.scrollIntoView(); }
+})();
+</script>
+</body>
+</html>

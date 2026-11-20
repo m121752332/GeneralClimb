@@ -16,7 +16,7 @@ import { formatRound, readProgress, unlockedIndex } from '../core/Progress';
 import { applyScreenFit } from '../core/ScreenFit';
 import { settings } from '../core/Settings';
 import { sound } from '../core/Sound';
-import { openAccountPanel } from '../ui/AccountPanel';
+import { guideUrl, openAccountPanel, openPage } from '../ui/AccountPanel';
 import { openLeaderboard } from '../ui/LeaderboardPanel';
 import { openLevelSelect } from '../ui/LevelSelectPanel';
 import { openSettings } from '../ui/SettingsPanel';
@@ -398,11 +398,17 @@ export class Home extends Component {
         this.dock(caption, { bottom: 14, centerX: true }, { bottom: 12, right: EDGE_TALL });
         const box = makeNode('Tip', this.node, TIP_W, 36);
         this.dock(box, { bottom: 76, centerX: true }, { bottom: 18, left: EDGE_WIDE });
-        const tip = makeLabel(box, t('home.tip'), 20, hex('#f6dccf', 235), { outline: hex('#2a1a2e', 200), outlineWidth: 2 });
+        // The tip line also opens the player guide (site/guide/).
+        const tip = makeLabel(box, `${t('home.tip')}　${t('home.guide')}`, 20, hex('#f6dccf', 235), { outline: hex('#2a1a2e', 200), outlineWidth: 2 });
         tip.overflow = Label.Overflow.SHRINK;
         tip.node.getComponent(UITransform)!.setContentSize(TIP_W, 36);
         tip.verticalAlign = Label.VerticalAlign.CENTER;
         this.tipLabel = tip;
+        const btn = box.addComponent(Button);
+        btn.target = box;
+        btn.transition = Button.Transition.SCALE;
+        btn.zoomScale = 0.97;
+        box.on(Button.EventType.CLICK, () => openPage(guideUrl()));
     }
 
     /**

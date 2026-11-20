@@ -2,7 +2,7 @@
 // The icon files live in build-templates/web-mobile/, which Cocos Creator copies into the build root.
 // Cocos' generated index.html has no icon links, so publish-site.mjs adds them with injectIconLinks().
 // Regenerate the files from branding/gcr-icon.png when the logo changes.
-import { copyFileSync, existsSync } from 'node:fs';
+import { cpSync, copyFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const ICON_DIR = fileURLToPath(new URL('../build-templates/web-mobile', import.meta.url));
@@ -10,6 +10,9 @@ export const ICON_FILES = ['favicon.ico', 'favicon-32x32.png', 'apple-touch-icon
 // Static pages linked from the account panel (ui/AccountPanel.ts). md5Cache renames the copies
 // in the build (privacy.<hash>.html), so the plain names are copied in as well.
 export const PAGE_FILES = ['privacy.html', 'terms.html'];
+// Player guide (site/guide/), linked from the home tip line and the settings panel. Always copied
+// over the build's copy so site/guide/index.html is exactly the template.
+export const GUIDE_DIR = 'guide';
 
 const MARKER = '<!-- site-icons -->';
 // The game fills the window, so the page never scrolls (Cocos' style.css leaves overflow visible,
@@ -30,9 +33,10 @@ export function injectIconLinks(html) {
     return html.replace(/<\/head>/i, `  ${ICON_LINKS}\n</head>`);
 }
 
-/** Copies any icon file missing from dir (e.g. a build made without the build template). */
+/** Copies any icon or page file missing from dir (e.g. a build made without the build template), and the guide. */
 export function copyIconFiles(dir) {
     for (const name of [...ICON_FILES, ...PAGE_FILES]) {
         if (!existsSync(`${dir}/${name}`)) copyFileSync(`${ICON_DIR}/${name}`, `${dir}/${name}`);
     }
+    cpSync(`${ICON_DIR}/${GUIDE_DIR}`, `${dir}/${GUIDE_DIR}`, { recursive: true });
 }
