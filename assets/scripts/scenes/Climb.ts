@@ -105,7 +105,7 @@ function clockText(sec: number): string {
     return t(h > 0 ? 'climb.clockH' : 'climb.clock', vars);
 }
 
-/** Game climb seconds as real climbing time (core/RealTime, x9), hours and minutes. */
+/** Game climb seconds as real climbing time (core/RealTime, x9.5), hours and minutes. */
 function realText(sec: number): string {
     return formatRealDuration(sec * 1000);
 }
